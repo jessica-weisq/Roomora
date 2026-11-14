@@ -2,7 +2,7 @@
 # Needs two repository secrets (Settings → Secrets and variables → Actions):
 #   MODAL_TOKEN_ID and MODAL_TOKEN_SECRET  (create a token at https://modal.com/settings/tokens)
 # and, once, a Modal secret with the API keys:
-#   modal secret create photos-to-3d ANTHROPIC_API_KEY=... [FAL_KEY=...]
+#   modal secret create photos-to-3d GEMINI_API_KEY=... [FAL_KEY=...]
 name: Deploy backend
 
 on:

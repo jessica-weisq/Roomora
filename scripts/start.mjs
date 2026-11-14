@@ -103,7 +103,7 @@ async function startBackend() {
     env.VITE_API_URL = url
   } else {
     console.log('\nThe backend didn\'t start (see the [backend] messages above), so the app is using its mock backend.')
-    console.log('Common fixes: run `modal setup` to log in, or create the secret: modal secret create photos-to-3d ANTHROPIC_API_KEY=...\n')
+    console.log('Common fixes: run `modal setup` to log in, or create the secret: modal secret create photos-to-3d GEMINI_API_KEY=...\n')
   }
 }
 

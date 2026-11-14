@@ -1,18 +1,24 @@
-"""Read the floor plan and match each photo to a room, using Claude's vision.
+"""Read the floor plan and match each photo to a room, using a vision model.
 
-One request: the plan plus a thumbnail of every photo. Claude answers through a tool call, so the
-reply is structured JSON we can validate rather than free text.
+One request: the plan plus a thumbnail of every photo. The model answers in structured JSON (a tool
+call for Claude, a response schema for Gemini) that we validate rather than free text.
+
+Which model: GEMINI_API_KEY set -> Gemini; else ANTHROPIC_API_KEY -> Claude.
+Force one with MATCH_PROVIDER=gemini|claude.
 """
 
 from __future__ import annotations
 
 import base64
+import copy
+import json
 import os
 import re
 from typing import Any
 
-# Override with ANTHROPIC_MODEL if you want a different (e.g. cheaper) model.
+# Override with ANTHROPIC_MODEL / GEMINI_MODEL if you want a different model.
 DEFAULT_MODEL = "claude-sonnet-5-5"
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"  # on the Gemini API's free tier
 
 TOOL = {
     "name": "report_layout",
@@ -88,6 +94,12 @@ INSTRUCTIONS = """You are helping turn a property's floor plan and room photos i
 
 Report everything with the report_layout tool. Every photo index must appear exactly once."""
 
+INSTRUCTIONS_JSON = INSTRUCTIONS.replace(
+    "Report everything with the report_layout tool.",
+    "Reply only with JSON matching the given schema. Use an empty string for room_name when a photo "
+    "isn't of a room in this property.",
+)
+
 
 def _slug(name: str, taken: set[str]) -> str:
     base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "room"
@@ -150,15 +162,80 @@ def normalize(raw: dict[str, Any], photo_ids: list[str]) -> dict[str, Any]:
             if candidates:
                 m["candidates"] = list(dict.fromkeys(candidates))
             m["reason"] = (p.get("reason") or "").strip() or (
-                "This doesn't look like a room in this property." if p and p.get("room_name") is None
+                "This doesn't look like a room in this property." if p and not p.get("room_name")
                 else "We couldn't tell which room this is."
             )
         matches.append(m)
     return {"plan": plan, "matches": matches}
 
 
-def match_photos(plan_bytes: bytes, plan_mime: str, photos: list[tuple[str, bytes]], client: Any = None) -> dict[str, Any]:
+def provider() -> str | None:
+    """'gemini', 'claude', or None when no key is set."""
+    forced = os.environ.get("MATCH_PROVIDER", "").strip().lower()
+    if forced in ("gemini", "claude"):
+        return forced
+    if os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
+        return "gemini"
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "claude"
+    return None
+
+
+def match_photos(plan_bytes: bytes, plan_mime: str, photos: list[tuple[str, bytes]]) -> dict[str, Any]:
     """photos: [(photoId, jpeg thumbnail bytes)] → {"plan": ..., "matches": [...]}"""
+    which = provider()
+    if which == "gemini":
+        return match_photos_gemini(plan_bytes, plan_mime, photos)
+    if which == "claude":
+        return match_photos_claude(plan_bytes, plan_mime, photos)
+    raise RuntimeError("No vision model configured: set GEMINI_API_KEY or ANTHROPIC_API_KEY.")
+
+
+def _gemini_schema() -> dict[str, Any]:
+    """The tool's JSON schema, with room_name as a plain string ('' = not a room here)."""
+    schema = copy.deepcopy(TOOL["input_schema"])
+    room_name = schema["properties"]["photos"]["items"]["properties"]["room_name"]
+    room_name["type"] = "string"
+    room_name["description"] = "Best guess, exactly as in plan.rooms; empty string if not a room in this property"
+    return schema
+
+
+def match_photos_gemini(plan_bytes: bytes, plan_mime: str, photos: list[tuple[str, bytes]], client: Any = None) -> dict[str, Any]:
+    from google import genai
+    from google.genai import types
+
+    client = client or genai.Client()  # reads GEMINI_API_KEY (or GOOGLE_API_KEY)
+    parts: list[Any] = [types.Part.from_text(text="Floor plan:"), types.Part.from_bytes(data=plan_bytes, mime_type=plan_mime)]
+    for i, (_, data) in enumerate(photos):
+        parts.append(types.Part.from_text(text=f"Photo {i}:"))
+        parts.append(types.Part.from_bytes(data=data, mime_type="image/jpeg"))
+    parts.append(types.Part.from_text(text=INSTRUCTIONS_JSON))
+
+    try:
+        response = client.models.generate_content(
+            model=os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
+            contents=parts,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_json_schema=_gemini_schema(),
+                temperature=0,
+                max_output_tokens=8000,
+            ),
+        )
+    except Exception as e:  # the free tier's per-minute limit is the usual culprit
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            raise ValueError("The AI is busy right now (free-tier limit). Please wait a minute and try again.") from e
+        raise
+    try:
+        raw = json.loads(response.text or "")
+    except json.JSONDecodeError as e:
+        raise ValueError("The vision model didn't return a layout. Please try again.") from e
+    if not isinstance(raw, dict):
+        raise ValueError("The vision model didn't return a layout. Please try again.")
+    return normalize(raw, [pid for pid, _ in photos])
+
+
+def match_photos_claude(plan_bytes: bytes, plan_mime: str, photos: list[tuple[str, bytes]], client: Any = None) -> dict[str, Any]:
     import anthropic
 
     client = client or anthropic.Anthropic()  # reads ANTHROPIC_API_KEY
@@ -189,7 +266,7 @@ def match_photos(plan_bytes: bytes, plan_mime: str, photos: list[tuple[str, byte
 
 
 # ---------------------------------------------------------------------------
-# Offline stand-in, used by local.py when there's no ANTHROPIC_API_KEY.
+# Offline stand-in, used by local.py when no AI key is set.
 DEMO_PLAN = {
     "width": 10, "depth": 7,
     "rooms": [

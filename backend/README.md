@@ -3,7 +3,7 @@
 Turns the uploaded floor plan and photos into a 3D model. Runs on [Modal](https://modal.com) (serverless GPUs, no Docker), and serves the API the frontend calls.
 
 ```
-POST /match       floor plan + photos → rooms on the plan + a room guess for every photo   (Claude vision)
+POST /match       floor plan + photos → rooms on the plan + a room guess for every photo   (Gemini or Claude vision)
 POST /build       confirmed photo → room assignments → starts a build job                (GPU)
 GET  /build/:id   progress; when done, the model URL (and 360° views if enabled)
 GET  /model/:id.glb
@@ -24,11 +24,13 @@ GET  /model/:id.glb
 ```bash
 pip install modal
 modal setup                                   # opens a browser to log in / sign up
-modal secret create photos-to-3d ANTHROPIC_API_KEY=sk-ant-...
+modal secret create photos-to-3d GEMINI_API_KEY=...   # or ANTHROPIC_API_KEY=sk-ant-...
 #   add FAL_KEY=... to that command for 360° views
 ```
 
-The Anthropic key is for reading the floor plan and matching photos (`core/matching.py`, model set by `ANTHROPIC_MODEL`, default `claude-sonnet-5-5`).
+The AI key is for reading the floor plan and matching photos (`core/matching.py`). With `GEMINI_API_KEY` it uses Gemini (`GEMINI_MODEL`, default `gemini-2.5-flash`, which is on the free tier); with `ANTHROPIC_API_KEY` it uses Claude (`ANTHROPIC_MODEL`, default `claude-sonnet-5-5`). If both are set, Gemini wins unless `MATCH_PROVIDER=claude`. Get a Gemini key at aistudio.google.com/apikey.
+
+To change the key later: `modal secret create photos-to-3d GEMINI_API_KEY=... --force` (include every key you want to keep, e.g. `FAL_KEY`).
 
 ## Running it
 
@@ -47,16 +49,17 @@ FAKE_SCANS=1 python backend/local.py    # placeholder boxes instead of scans, to
 python -m pytest backend/tests -q       # tests (run from the repo root)
 ```
 
-Without `ANTHROPIC_API_KEY`, `local.py` returns a fixed demo layout from `/match`.
+Without `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`, `local.py` returns a fixed demo layout from `/match`. To use Gemini locally: `GEMINI_API_KEY=... python backend/local.py` (PowerShell: `$env:GEMINI_API_KEY="..."; python backend/local.py`).
 
 ## Costs
 
 - **Modal:** the Starter plan includes monthly free credits. A build uses an L4 GPU for a few minutes, so a few pence per property, plus the first image build.
-- **Claude:** one request per upload (the plan plus small thumbnails of each photo).
+- **Gemini / Claude:** one request per upload (the plan plus small thumbnails of each photo). Gemini's free tier costs nothing but has a per-minute limit: if several people upload at once, some get "The AI is busy, try again in a minute".
 - **fal (optional):** about $0.15 per room's 360° view.
 
 ## Limits worth knowing
 
+- **Gemini free tier and privacy:** on the free tier Google may use what you send (floor plans, photos) to improve its products. Fine for demo data; don't upload anything private. The paid tier doesn't do this.
 - **Licence:** MASt3R's code and weights are **CC BY-NC-SA 4.0, non-commercial only**, and some of its training datasets have their own terms. Fine for a hackathon demo; a commercial product would need another reconstruction model or a licence from Naver.
 - **Room orientation is a best guess.** The plan doesn't say where each photo was taken from, so a scan can come out turned 180° inside its room.
 - **Rectangular rooms only:** irregular rooms are treated as their bounding rectangle.

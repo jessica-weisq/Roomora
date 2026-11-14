@@ -3,7 +3,7 @@
 Frontend for the hackathon project. The user uploads a floor plan and room photos, we match each photo to a room automatically, they check any we're unsure about, we build the model, and they explore it in 3D.
 
 - **Frontend** (this folder): React + Vite + TypeScript, with three.js through react-three-fiber and drei for the viewer. Hosted on **Netlify**.
-- **Backend** (`backend/`): Python on **Modal** GPUs. Claude reads the floor plan and matches photos to rooms; **MASt3R** reconstructs each room in 3D; the rooms are placed on the plan and exported as one .glb. See [backend/README.md](backend/README.md).
+- **Backend** (`backend/`): Python on **Modal** GPUs. Gemini (or Claude) reads the floor plan and matches photos to rooms; **MASt3R** reconstructs each room in 3D; the rooms are placed on the plan and exported as one .glb. See [backend/README.md](backend/README.md).
 
 ## Run it
 

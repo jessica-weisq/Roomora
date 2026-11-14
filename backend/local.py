@@ -3,7 +3,7 @@
     pip install -r backend/requirements-local.txt
     python backend/local.py            # http://localhost:8000
 
-- With ANTHROPIC_API_KEY set, /match uses Claude; otherwise a fixed demo layout.
+- With GEMINI_API_KEY (or ANTHROPIC_API_KEY) set, /match uses that model; otherwise a fixed demo layout.
 - MASt3R runs only if this machine has a CUDA GPU and the mast3r repo on PYTHONPATH. Otherwise the
   model is the plan's floors and walls without scans. Set FAKE_SCANS=1 to get placeholder boxes instead.
 """
@@ -21,7 +21,7 @@ sys.path.insert(0, str(HERE))
 
 from core.api import create_app  # noqa: E402
 from core.jobs import run_build  # noqa: E402
-from core.matching import demo_match, match_photos  # noqa: E402
+from core.matching import demo_match, match_photos, provider  # noqa: E402
 from core.storage import Store  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
@@ -56,9 +56,12 @@ def make_app():
     def start_build(job_id: str, project_id: str) -> None:
         threading.Thread(target=run_build, args=(store, job_id, project_id, reconstruct), daemon=True).start()
 
-    match = match_photos if os.environ.get("ANTHROPIC_API_KEY") else demo_match
-    if match is demo_match:
-        logging.warning("No ANTHROPIC_API_KEY: /match returns a fixed demo layout.")
+    which = provider()
+    match = match_photos if which else demo_match
+    if which:
+        logging.info("/match uses %s.", which)
+    else:
+        logging.warning("No GEMINI_API_KEY or ANTHROPIC_API_KEY: /match returns a fixed demo layout.")
     return create_app(store, start_build, match)
 
 

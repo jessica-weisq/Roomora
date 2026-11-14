@@ -133,7 +133,7 @@ def test_build_failure_is_reported(tmp_path):
 
 
 def test_matching_request_shape():
-    """match_photos builds one request with the plan, every photo and a forced tool call."""
+    """match_photos_claude builds one request with the plan, every photo and a forced tool call."""
     from core import matching
 
     sent = {}
@@ -150,8 +150,73 @@ def test_matching_request_shape():
                 sent.update(kw)
                 return type("R", (), {"content": [FakeBlock()]})()
 
-    out = matching.match_photos(b"%PDF-1.4", "application/pdf", [("p1", _jpeg((1, 2, 3)))], client=FakeClient())
+    out = matching.match_photos_claude(b"%PDF-1.4", "application/pdf", [("p1", _jpeg((1, 2, 3)))], client=FakeClient())
     assert out["matches"][0]["roomId"] == "kitchen"
     assert sent["tool_choice"] == {"type": "tool", "name": "report_layout"}
     kinds = [b["type"] for b in sent["messages"][0]["content"]]
     assert kinds.count("document") == 1 and kinds.count("image") == 1
+
+
+def test_gemini_request_shape():
+    """match_photos_gemini sends the plan and every photo, asks for JSON, and normalizes the reply."""
+    import json as _json
+
+    from core import matching
+
+    sent = {}
+    reply = {"plan": {"width_m": 8, "depth_m": 4, "rooms": [
+                {"name": "Kitchen", "x_m": 0, "y_m": 0, "width_m": 4, "depth_m": 4},
+                {"name": "Bedroom", "x_m": 4, "y_m": 0, "width_m": 4, "depth_m": 4}]},
+             "photos": [{"photo_index": 0, "room_name": "Kitchen", "confident": True},
+                        {"photo_index": 1, "room_name": "", "confident": False}]}
+
+    class FakeModels:
+        @staticmethod
+        def generate_content(**kw):
+            sent.update(kw)
+            return type("R", (), {"text": _json.dumps(reply)})()
+
+    class FakeClient:
+        models = FakeModels()
+
+    photos = [("p1", _jpeg((1, 2, 3))), ("p2", _jpeg((4, 5, 6)))]
+    out = matching.match_photos_gemini(b"%PDF-1.4", "application/pdf", photos, client=FakeClient())
+
+    mimes = [p.inline_data.mime_type for p in sent["contents"] if p.inline_data]
+    assert mimes == ["application/pdf", "image/jpeg", "image/jpeg"]
+    assert sent["config"].response_mime_type == "application/json"
+    room_name = sent["config"].response_json_schema["properties"]["photos"]["items"]["properties"]["room_name"]
+    assert room_name["type"] == "string"
+    assert out["matches"][0] == {"photoId": "p1", "roomId": "kitchen", "confident": True}
+    assert out["matches"][1]["roomId"] is None and "doesn't look like a room" in out["matches"][1]["reason"]
+
+
+def test_gemini_rate_limit_is_friendly():
+    import pytest
+
+    from core import matching
+
+    class FakeModels:
+        @staticmethod
+        def generate_content(**kw):
+            raise RuntimeError("429 RESOURCE_EXHAUSTED")
+
+    class FakeClient:
+        models = FakeModels()
+
+    with pytest.raises(ValueError, match="busy"):
+        matching.match_photos_gemini(b"x", "image/png", [("p1", _jpeg((1, 2, 3)))], client=FakeClient())
+
+
+def test_provider_choice(monkeypatch):
+    from core import matching
+
+    for k in ("MATCH_PROVIDER", "GEMINI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    assert matching.provider() is None
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "a")
+    assert matching.provider() == "claude"
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+    assert matching.provider() == "gemini"
+    monkeypatch.setenv("MATCH_PROVIDER", "claude")
+    assert matching.provider() == "claude"

@@ -2,7 +2,7 @@
 
     pip install modal
     modal setup                                   # one-time login
-    modal secret create photos-to-3d ANTHROPIC_API_KEY=sk-ant-...   # add FAL_KEY=... for 360° views
+    modal secret create photos-to-3d GEMINI_API_KEY=...   # or ANTHROPIC_API_KEY=...; add FAL_KEY=... for 360° views
     modal serve backend/app.py                    # temporary URL, reloads on save (start.bat does this)
     modal deploy backend/app.py                   # permanent URL (the GitHub Action does this on push)
 
@@ -18,7 +18,7 @@ app = modal.App("photos-to-3d")
 
 data = modal.Volume.from_name("photos-to-3d-data", create_if_missing=True)
 jobs = modal.Dict.from_name("photos-to-3d-jobs", create_if_missing=True)
-secret = modal.Secret.from_name("photos-to-3d")  # ANTHROPIC_API_KEY, optional FAL_KEY
+secret = modal.Secret.from_name("photos-to-3d")  # GEMINI_API_KEY or ANTHROPIC_API_KEY, optional FAL_KEY
 
 MAST3R_COMMIT = "main"  # pin a commit hash here if a future change to naver/mast3r breaks things
 WEIGHTS = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
@@ -26,7 +26,7 @@ WEIGHTS = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
 web_image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
-        "fastapi[standard]>=0.115", "python-multipart", "anthropic>=0.40",
+        "fastapi[standard]>=0.115", "python-multipart", "anthropic>=0.40", "google-genai>=1.30",
         "pillow", "pillow-heif", "numpy<2", "trimesh",
     )
     .add_local_python_source("core")
