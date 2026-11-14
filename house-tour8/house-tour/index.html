@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>House tour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=Archivo+Narrow:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/tour.css">
+</head>
+<body>
+<header class="app-head">
+  <h1 class="app-address">Loading tour</h1>
+  <div class="app-modes" role="group" aria-label="View">
+    <button type="button" class="mode-walk" aria-pressed="true">3D walk</button>
+    <button type="button" class="mode-inside" aria-pressed="false">3D photos</button>
+    <button type="button" class="mode-street" aria-pressed="false">Street</button>
+  </div>
+  <button type="button" class="mode-edit" aria-pressed="false">Edit hotspots</button>
+</header>
+<aside class="app-warnings" hidden>
+  <div><strong>property.js has problems</strong><ul></ul></div>
+  <button type="button">Dismiss</button>
+</aside>
+<main class="app-main">
+  <section class="app-stage">
+    <div class="view-walk"></div>
+    <div class="view-inside" hidden></div>
+    <div class="view-street" hidden></div>
+  </section>
+  <section class="app-plan" aria-label="Floor plan"></section>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="config.js"></script>
+<script src="js/media-data.js"></script>
+<script src="property.js"></script>
+<script src="js/tour-core.js"></script>
+<script src="js/floorplan.js"></script>
+<script src="js/roomviewer.js"></script>
+<script src="js/streetview.js"></script>
+<script src="js/furnish2.js"></script>
+<script src="js/walk3d.js"></script>
+<script src="js/shell.js"></script>
+</body>
+</html>
