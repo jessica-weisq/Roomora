@@ -1,0 +1,32 @@
+import { Suspense, lazy } from 'react'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { ProjectProvider } from './state/ProjectContext'
+import { Upload } from './screens/Upload'
+import { Review } from './screens/Review'
+import { Build } from './screens/Build'
+
+// three.js is large, so the viewer loads only when it's needed.
+const Viewer = lazy(() => import('./screens/Viewer').then((m) => ({ default: m.Viewer })))
+
+export default function App() {
+  return (
+    <ProjectProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Upload />} />
+          <Route path="/review" element={<Review />} />
+          <Route path="/build" element={<Build />} />
+          <Route
+            path="/view"
+            element={
+              <Suspense fallback={null}>
+                <Viewer />
+              </Suspense>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </ProjectProvider>
+  )
+}
