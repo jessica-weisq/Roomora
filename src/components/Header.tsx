@@ -1,5 +1,6 @@
 import { Fragment } from 'react'
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { Icon } from './Icon'
 
 const STEPS = ['Upload', 'Review', 'Build', 'View']
@@ -8,11 +9,11 @@ export function Header({ step, right }: { step?: number; right?: ReactNode }) {
   return (
     <header className="header">
       <div className="header-inner">
-        <div className="brand">
+        <Link to="/" className="brand" aria-label="Roomora home">
           <Icon name="cube" size={26} />
-          {/* TODO: product name */}
           <span>Roomora</span>
-        </div>
+        </Link>
+        <div className="header-end">
         {step !== undefined ? (
           <nav aria-label="Progress">
             <ol className="stepper">
@@ -33,6 +34,10 @@ export function Header({ step, right }: { step?: number; right?: ReactNode }) {
         ) : (
           right
         )}
+        <Link to="/about" className="header-link">
+          About
+        </Link>
+        </div>
       </div>
     </header>
   )
