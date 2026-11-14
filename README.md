@@ -92,6 +92,28 @@ Room rectangles are in **metres**, origin at the plan's top-left corner, `x` to 
 
 `step` indexes `BUILD_STEPS` in `src/api/types.ts`. Edit the labels there to match what the pipeline really does.
 
+Optionally, the finished status can include 360° views, one per room:
+
+```json
+{ "jobId": "job-1", "state": "done", "step": 7, "panoramas": { "living": "https://…/living.jpg", "bed1": "https://…/bed1.jpg" } }
+```
+
+Each URL must be a **2:1 equirectangular** image. Rooms with a panorama get an "Open 360° view" button in the viewer, shown with Marzipano (`src/viewer/Panorama.tsx`) and labelled as an AI-generated impression.
+
+### Generating the panoramas with fal
+
+`fal-ai/hunyuan_world` turns one photo into a 1920 × 960 panorama (about $0.15 each). On the **server**:
+
+```js
+import { fal } from "@fal-ai/client"; // reads FAL_KEY from the environment
+const { data } = await fal.subscribe("fal-ai/hunyuan_world", {
+  input: { image_url: bestPhotoOfRoom, prompt: "Seamless 360° panorama of this living room, same style and furniture" },
+});
+panoramas[roomId] = data.image.url;
+```
+
+Keep `FAL_KEY` on the backend. Anything in the frontend's `VITE_…` variables is visible to every visitor. Pick each room's widest, clearest photo as the input: everything outside it is generated.
+
 ### The .glb
 
 If `modelUrl` is set, the viewer loads it. Export it in metres, y up, with the origin at the plan's top-left corner (x right, z down the page), so it lines up with the plan's coordinates. If `modelUrl` is missing, the viewer draws the plan as a simple dollhouse model, and **Download .glb** exports that.

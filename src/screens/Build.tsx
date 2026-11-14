@@ -12,7 +12,7 @@ import { useProject } from '../state/ProjectContext'
 const POLL_MS = 1000
 
 export function Build() {
-  const { jobId, plan, setModelUrl } = useProject()
+  const { jobId, plan, setBuildResult } = useProject()
   const navigate = useNavigate()
   const [status, setStatus] = useState<BuildStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -27,7 +27,7 @@ export function Build() {
         if (stopped) return
         setStatus(s)
         if (s.state === 'done') {
-          setModelUrl(s.modelUrl ?? null)
+          setBuildResult(s.modelUrl ?? null, s.panoramas ?? {})
           return
         }
         if (s.state === 'failed') {
@@ -46,7 +46,7 @@ export function Build() {
       stopped = true
       clearTimeout(timer)
     }
-  }, [jobId, setModelUrl])
+  }, [jobId, setBuildResult])
 
   if (!jobId || !plan) return <Navigate to="/" replace />
 

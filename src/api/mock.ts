@@ -3,6 +3,7 @@
 
 import type { BuildRequest, BuildStatus, MatchResponse, Plan, PhotoMatch } from './types'
 import { BUILD_STEPS } from './types'
+import { mockPanorama } from './mockPanorama'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -39,20 +40,30 @@ export async function mockMatchPhotos(photoIds: string[]): Promise<MatchResponse
   return { projectId: 'demo-' + Date.now(), plan: DEMO_PLAN, matches }
 }
 
-const jobs = new Map<string, number>()
+const jobs = new Map<string, { started: number; rooms: string[]; panoramas?: Record<string, string> }>()
 
 export async function mockStartBuild(req: BuildRequest): Promise<{ jobId: string }> {
   await sleep(300)
   const jobId = req.projectId + '-job'
-  jobs.set(jobId, Date.now())
+  // Only rooms that have at least one photo get a 360° view, as with the real pipeline.
+  const rooms = [...new Set(Object.values(req.assignments))].filter((r) => r !== 'skip')
+  jobs.set(jobId, { started: Date.now(), rooms })
   return { jobId }
 }
 
 export async function mockGetBuildStatus(jobId: string): Promise<BuildStatus> {
   await sleep(150)
-  const started = jobs.get(jobId) ?? Date.now()
+  const job = jobs.get(jobId)
+  const started = job?.started ?? Date.now()
   const step = Math.min(Math.floor((Date.now() - started) / 1500), BUILD_STEPS.length)
   const done = step >= BUILD_STEPS.length
+  if (done && job && !job.panoramas) {
+    job.panoramas = {}
+    for (const id of job.rooms) {
+      const i = DEMO_PLAN.rooms.findIndex((r) => r.id === id)
+      if (i >= 0) job.panoramas[id] = await mockPanorama(DEMO_PLAN.rooms[i].name, i)
+    }
+  }
   // No modelUrl: the viewer draws the plan itself.
-  return { jobId, state: done ? 'done' : 'running', step }
+  return { jobId, state: done ? 'done' : 'running', step, panoramas: done ? job?.panoramas : undefined }
 }

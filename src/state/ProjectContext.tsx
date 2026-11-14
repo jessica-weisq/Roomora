@@ -23,6 +23,8 @@ interface ProjectState {
   assignments: Record<string, string>
   jobId: string | null
   modelUrl: string | null
+  /** roomId → 360° image URL */
+  panoramas: Record<string, string>
 }
 
 interface ProjectApi extends ProjectState {
@@ -32,7 +34,7 @@ interface ProjectApi extends ProjectState {
   setMatchResult: (projectId: string, plan: Plan, matches: PhotoMatch[]) => void
   assign: (photoId: string, roomId: string) => void
   setJob: (jobId: string | null) => void
-  setModelUrl: (url: string | null) => void
+  setBuildResult: (modelUrl: string | null, panoramas: Record<string, string>) => void
   reset: () => void
 }
 
@@ -45,6 +47,7 @@ const empty: ProjectState = {
   assignments: {},
   jobId: null,
   modelUrl: null,
+  panoramas: {},
 }
 
 const Ctx = createContext<ProjectApi | null>(null)
@@ -80,7 +83,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const setMatchResult = useCallback((projectId: string, plan: Plan, matches: PhotoMatch[]) => {
     const assignments: Record<string, string> = {}
     for (const m of matches) assignments[m.photoId] = m.confident && m.roomId ? m.roomId : ''
-    setState((s) => ({ ...s, projectId, plan, matches, assignments, jobId: null, modelUrl: null }))
+    setState((s) => ({ ...s, projectId, plan, matches, assignments, jobId: null, modelUrl: null, panoramas: {} }))
   }, [])
 
   const assign = useCallback((photoId: string, roomId: string) => {
@@ -88,7 +91,10 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const setJob = useCallback((jobId: string | null) => setState((s) => ({ ...s, jobId })), [])
-  const setModelUrl = useCallback((modelUrl: string | null) => setState((s) => ({ ...s, modelUrl })), [])
+  const setBuildResult = useCallback(
+    (modelUrl: string | null, panoramas: Record<string, string>) => setState((s) => ({ ...s, modelUrl, panoramas })),
+    [],
+  )
 
   const reset = useCallback(() => {
     setState((s) => {
@@ -99,8 +105,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo<ProjectApi>(
-    () => ({ ...state, setFloorPlan, addPhotos, removePhoto, setMatchResult, assign, setJob, setModelUrl, reset }),
-    [state, setFloorPlan, addPhotos, removePhoto, setMatchResult, assign, setJob, setModelUrl, reset],
+    () => ({ ...state, setFloorPlan, addPhotos, removePhoto, setMatchResult, assign, setJob, setBuildResult, reset }),
+    [state, setFloorPlan, addPhotos, removePhoto, setMatchResult, assign, setJob, setBuildResult, reset],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

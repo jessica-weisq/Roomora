@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Header } from '../components/Header'
 import { Icon } from '../components/Icon'
@@ -6,16 +6,19 @@ import { PhotoThumb } from '../components/PhotoThumb'
 import { FloorPlan } from '../components/FloorPlan'
 import { ModelScene } from '../viewer/ModelScene'
 import type { SceneHandle } from '../viewer/ModelScene'
+import { PanoramaDialog } from '../viewer/PanoramaDialog'
 import { downloadGlb } from '../lib/exportGlb'
 import { resolvedAssignments, useProject } from '../state/ProjectContext'
 
 export function Viewer() {
-  const { plan, matches, assignments, photos, floorPlan, modelUrl, reset } = useProject()
+  const { plan, matches, assignments, photos, floorPlan, modelUrl, panoramas, reset } = useProject()
   const navigate = useNavigate()
   const [view, setView] = useState<'3d' | 'plan'>('3d')
   const [selected, setSelected] = useState<string | null>(plan?.rooms[0]?.id ?? null)
   const [toast, setToast] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
+  const [panoOpen, setPanoOpen] = useState(false)
+  const closePano = useCallback(() => setPanoOpen(false), [])
   const scene = useRef<SceneHandle>(null)
   const stage = useRef<HTMLElement>(null)
   const labelLayer = useRef<HTMLDivElement>(null)
@@ -178,7 +181,10 @@ export function Viewer() {
                   return (
                     <li key={r.id}>
                       <button type="button" aria-pressed={selected === r.id} onClick={() => setSelected(r.id)}>
-                        <span>{r.name}</span>
+                        <span>
+                          {r.name}
+                          {panoramas[r.id] && <span className="chip-360">360°</span>}
+                        </span>
                         <span className={n < 2 ? 'count low' : 'count'}>{label(n)}</span>
                       </button>
                     </li>
@@ -195,6 +201,12 @@ export function Viewer() {
                 <div className="muted small" style={{ marginBottom: 12 }}>
                   {current.width.toFixed(1)} × {current.depth.toFixed(1)} m · {label(currentPhotos.length)}
                 </div>
+                {panoramas[current.id] && (
+                  <button type="button" className="btn btn-primary" style={{ width: '100%', marginBottom: 12 }} onClick={() => setPanoOpen(true)}>
+                    <Icon name="pano" size={18} />
+                    Open 360° view
+                  </button>
+                )}
                 {currentPhotos.length > 0 ? (
                   <div className="mini-grid">
                     {currentPhotos.map((p) => (
@@ -224,6 +236,9 @@ export function Viewer() {
           </aside>
         </div>
       </main>
+      {panoOpen && current && panoramas[current.id] && (
+        <PanoramaDialog roomName={current.name} url={panoramas[current.id]} onClose={closePano} />
+      )}
       {toast && (
         <div className="toast" role="status">
           {toast}

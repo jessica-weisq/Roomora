@@ -50,6 +50,11 @@ export interface BuildStatus {
   step: number
   /** URL of the finished .glb. Optional: without it the viewer draws the plan as a simple 3D model. */
   modelUrl?: string
+  /**
+   * Optional 360° views, roomId → URL of a 2:1 equirectangular image (e.g. from fal-ai/hunyuan_world).
+   * These are AI-generated from one photo, and the UI labels them as such.
+   */
+  panoramas?: Record<string, string>
   error?: string
 }
 
@@ -59,5 +64,6 @@ export const BUILD_STEPS: { label: string; detail: string }[] = [
   { label: 'Placing photos in rooms', detail: 'Lining each photo up with its walls' },
   { label: 'Building walls and floors', detail: 'Raising walls to ceiling height' },
   { label: 'Applying textures from your photos', detail: 'Projecting photos onto walls and floors' },
+  { label: 'Creating 360° views', detail: 'Generating a panorama for each room' },
   { label: 'Final checks', detail: 'Looking for gaps and stretched textures' },
 ]
