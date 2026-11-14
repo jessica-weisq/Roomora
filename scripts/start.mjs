@@ -42,14 +42,14 @@ if (!existsSync('node_modules') || installed !== lockHash) {
 }
 
 // 3. Backend
-// - If .env.local already sets VITE_API_URL (e.g. the deployed Modal URL), just use that.
+// - If .env or .env.local sets VITE_API_URL (the deployed Modal URL), just use that.
 // - Otherwise, if the Modal CLI is installed, run the backend with `modal serve` and point the
 //   frontend at the temporary URL it prints.
 // - Otherwise, use the frontend's built-in mock backend.
 const env = { ...process.env }
 const children = []
-const envLocal = existsSync('.env.local') ? readFileSync('.env.local', 'utf8') : ''
-const configured = /^\s*VITE_API_URL\s*=\s*\S+/m.test(envLocal) || !!process.env.VITE_API_URL
+const envFiles = ['.env', '.env.local'].map((f) => (existsSync(f) ? readFileSync(f, 'utf8') : '')).join('\n')
+const configured = /^\s*VITE_API_URL\s*=\s*\S+/m.test(envFiles) || !!process.env.VITE_API_URL
 
 function findModal() {
   const candidates = isWin ? [['modal'], ['py', '-m', 'modal'], ['python', '-m', 'modal']] : [['modal'], ['python3', '-m', 'modal']]
@@ -66,7 +66,7 @@ async function startBackend() {
     return
   }
   if (configured) {
-    console.log('Using the backend URL from .env.local.')
+    console.log('Using the deployed backend (VITE_API_URL in .env / .env.local).')
     return
   }
   const modal = findModal()
