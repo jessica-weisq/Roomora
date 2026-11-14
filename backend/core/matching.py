@@ -18,7 +18,7 @@ from typing import Any
 
 # Override with ANTHROPIC_MODEL / GEMINI_MODEL if you want a different model.
 DEFAULT_MODEL = "claude-sonnet-5-5"
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"  # on the Gemini API's free tier
+DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"  # gemini-2.5-flash is closed to new API keys
 
 TOOL = {
     "name": "report_layout",

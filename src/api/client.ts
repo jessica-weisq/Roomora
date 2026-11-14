@@ -11,7 +11,14 @@ const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(text || `Request failed (${res.status})`)
+    let message = text
+    try {
+      const detail = JSON.parse(text)?.detail // FastAPI errors look like {"detail": "..."}
+      if (typeof detail === 'string') message = detail
+    } catch {
+      // not JSON: show the text as it is
+    }
+    throw new Error(message || `Request failed (${res.status})`)
   }
   return res.json() as Promise<T>
 }
