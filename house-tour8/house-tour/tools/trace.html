@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trace rooms on a floor plan</title>
+<style>
+  :root { --ink:#22292b; --paper:#edefea; --survey:#2f6fb0; color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) { :root { --ink:#e4e8e3; --paper:#1b2123; --survey:#6fa6e0; } }
+  body { margin:0; font:15px/1.5 system-ui, sans-serif; background:var(--paper); color:var(--ink); }
+  header { padding:14px 20px; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+  h1 { font-size:18px; margin:0 auto 0 0; }
+  main { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:16px; padding:0 20px 20px; }
+  @media (max-width:900px){ main { grid-template-columns:1fr; } }
+  .board { position:relative; overflow:auto; border:1px solid currentColor; min-height:300px; }
+  .board svg { display:block; cursor:crosshair; }
+  polygon.done { fill:rgba(47,111,176,.18); stroke:var(--survey); stroke-width:3; }
+  polyline.cur { fill:none; stroke:#e0a100; stroke-width:3; }
+  circle { fill:#e0a100; }
+  text { font:600 22px system-ui; fill:var(--ink); }
+  textarea { width:100%; font:12px ui-monospace, Menlo, monospace; }
+  label { display:block; margin-bottom:10px; }
+  input[type=text] { width:100%; padding:5px 8px; }
+  button { padding:6px 12px; }
+  ol { padding-left:20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Trace rooms on a floor plan</h1>
+  <input type="file" id="file" accept="image/*" aria-label="Choose floor plan image">
+</header>
+<main>
+  <div class="board" id="board"><p style="padding:20px">Choose a floor plan image to start.</p></div>
+  <div>
+    <ol>
+      <li>Click each corner of a room. Hold Shift to keep walls straight.</li>
+      <li>Type the room’s name and select Finish room.</li>
+      <li>Copy the result into property.js.</li>
+    </ol>
+    <label>Floor id <input type="text" id="floor" value="ground"></label>
+    <label>Room name <input type="text" id="name" placeholder="e.g. Kitchen"></label>
+    <p><button id="finish" disabled>Finish room</button> <button id="undo">Undo point</button> <button id="drop">Remove last room</button></p>
+    <label>Floor entry and rooms for property.js<textarea id="out" rows="18" readonly></textarea></label>
+  </div>
+</main>
+<script>
+const NS = "http://www.w3.org/2000/svg";
+const $ = (id) => document.getElementById(id);
+let W = 0, H = 0, svg, rooms = [], pts = [], imgURL = "", fileName = "";
+const slug = (s) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "room";
+
+$("file").addEventListener("change", (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  fileName = f.name;
+  imgURL = URL.createObjectURL(f);
+  const img = new Image();
+  img.onload = () => { W = img.naturalWidth; H = img.naturalHeight; rooms = []; pts = []; build(); };
+  img.src = imgURL;
+});
+function build() {
+  svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("width", W); svg.setAttribute("height", H);
+  svg.style.maxWidth = "100%"; svg.style.height = "auto";
+  svg.addEventListener("click", onClick);
+  $("board").replaceChildren(svg);
+  draw();
+}
+function onClick(e) {
+  const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY;
+  let { x, y } = p.matrixTransform(svg.getScreenCTM().inverse());
+  x = Math.round(x); y = Math.round(y);
+  if (e.shiftKey && pts.length) {
+    const [px, py] = pts[pts.length - 1];
+    if (Math.abs(x - px) < Math.abs(y - py)) x = px; else y = py;
+  }
+  pts.push([x, y]); draw();
+}
+$("undo").onclick = () => { pts.pop(); draw(); };
+$("drop").onclick = () => { rooms.pop(); draw(); };
+$("finish").onclick = () => {
+  const name = $("name").value.trim() || `Room ${rooms.length + 1}`;
+  let id = slug(name), n = 2; while (rooms.some((r) => r.id === id)) id = slug(name) + "-" + n++;
+  rooms.push({ id, name, floor: $("floor").value.trim() || "ground", outline: pts, media: [], links: [] });
+  pts = []; $("name").value = ""; draw();
+};
+function el(tag, a) { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); return e; }
+function draw() {
+  $("finish").disabled = pts.length < 3;
+  if (svg) {
+    svg.replaceChildren(el("image", { href: imgURL, width: W, height: H }));
+    rooms.forEach((r) => {
+      svg.appendChild(el("polygon", { class: "done", points: r.outline.join(" ") }));
+      const c = r.outline.reduce((s, p) => [s[0] + p[0] / r.outline.length, s[1] + p[1] / r.outline.length], [0, 0]);
+      const t = el("text", { x: c[0], y: c[1], "text-anchor": "middle" }); t.textContent = r.name; svg.appendChild(t);
+    });
+    if (pts.length) svg.appendChild(el("polyline", { class: "cur", points: pts.join(" ") }));
+    pts.forEach(([x, y]) => svg.appendChild(el("circle", { cx: x, cy: y, r: 6 })));
+  }
+  const floor = { id: $("floor").value.trim() || "ground", name: "", plan: "img/" + (fileName || "plan.png"), planSize: { w: W, h: H } };
+  $("out").value = JSON.stringify({ floor, rooms }, null, 2);
+}
+</script>
+</body>
+</html>
