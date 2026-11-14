@@ -6,11 +6,19 @@ React + Vite + TypeScript, with three.js through react-three-fiber and drei for 
 
 ## Run it
 
+**Double-click `start.bat`** (Windows) or **`start.command`** (Mac). It checks for Node.js, installs or updates the libraries when needed, starts the app and opens it in your browser. Close the window to stop it.
+
+The only thing you need installed is [Node.js](https://nodejs.org) (LTS). The launcher logic is in `scripts/start.mjs`; `npm start` does the same from a terminal.
+
+By hand:
+
 ```bash
 npm install
 npm run dev        # http://localhost:5173
 npm run build      # type-check + production build into dist/
 ```
+
+On a Mac, if double-clicking `start.command` says it can't be opened, right-click it → Open the first time.
 
 Out of the box it uses a **mock backend** (`src/api/mock.ts`), so the whole flow works with no server. The mock always marks the last photo as "not sure" so you can see the Review screen.
 
