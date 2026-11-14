@@ -81,7 +81,7 @@ export function About() {
 
         <section aria-labelledby="team">
           <h2 id="team">Who made it</h2>
-          <p>Originally built by Neev Dhall, Will Robinson and Jessica Wei at Imperial AI Hack 2026, Imperial College London (14th-15th November 2026).</p>
+          <p>Originally built by Neev Dhall, Will Robinson and Jessica Wei at Imperial AI Hack 2026 (Imperial College London, 14th-15th November 2026).</p>
         </section>
 
         <section aria-labelledby="credits">
