@@ -42,16 +42,80 @@ if (!existsSync('node_modules') || installed !== lockHash) {
 }
 
 // 3. Backend
-// When backend/app.py exists, start it here (e.g. `modal serve backend/app.py`) and pass its
-// URL to the frontend through process.env.VITE_API_URL + VITE_USE_MOCK=false.
-// Until then the frontend uses its built-in mock backend.
+// - If .env.local already sets VITE_API_URL (e.g. the deployed Modal URL), just use that.
+// - Otherwise, if the Modal CLI is installed, run the backend with `modal serve` and point the
+//   frontend at the temporary URL it prints.
+// - Otherwise, use the frontend's built-in mock backend.
 const env = { ...process.env }
-if (!existsSync(join('backend', 'app.py'))) {
-  console.log('No backend yet, so the app is using its mock backend.')
+const children = []
+const envLocal = existsSync('.env.local') ? readFileSync('.env.local', 'utf8') : ''
+const configured = /^\s*VITE_API_URL\s*=\s*\S+/m.test(envLocal) || !!process.env.VITE_API_URL
+
+function findModal() {
+  const candidates = isWin ? [['modal'], ['py', '-m', 'modal'], ['python', '-m', 'modal']] : [['modal'], ['python3', '-m', 'modal']]
+  for (const [cmd, ...pre] of candidates) {
+    const r = spawnSync(cmd, [...pre, '--version'], { shell: isWin, stdio: 'ignore' })
+    if (r.status === 0) return [cmd, pre]
+  }
+  return null
 }
+
+async function startBackend() {
+  if (!existsSync(join('backend', 'app.py'))) {
+    console.log('No backend folder, so the app is using its mock backend.')
+    return
+  }
+  if (configured) {
+    console.log('Using the backend URL from .env.local.')
+    return
+  }
+  const modal = findModal()
+  if (!modal) {
+    console.log('Modal isn\'t installed, so the app is using its mock backend.')
+    console.log('To run the real backend: pip install modal, then modal setup (see backend/README.md).')
+    return
+  }
+  const [cmd, pre] = modal
+  console.log('\nStarting the backend on Modal. The first time builds the GPU image, which can take 10–20 minutes...\n')
+  const proc = spawn(cmd, [...pre, 'serve', join('backend', 'app.py')], { shell: isWin, env })
+  children.push(proc)
+  const url = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), 30 * 60 * 1000)
+    const onData = (buf) => {
+      const text = buf.toString()
+      process.stdout.write(text.replace(/^(?=.)/gm, '[backend] '))
+      const m = text.match(/https:\/\/[^\s'"]+\.modal\.run/)
+      if (m) {
+        clearTimeout(timer)
+        resolve(m[0])
+      }
+    }
+    proc.stdout.on('data', onData)
+    proc.stderr.on('data', onData)
+    proc.on('exit', () => {
+      clearTimeout(timer)
+      resolve(null)
+    })
+  })
+  if (url) {
+    console.log(`\nBackend running at ${url}\n`)
+    env.VITE_USE_MOCK = 'false'
+    env.VITE_API_URL = url
+  } else {
+    console.log('\nThe backend didn\'t start (see the [backend] messages above), so the app is using its mock backend.')
+    console.log('Common fixes: run `modal setup` to log in, or create the secret: modal secret create photos-to-3d ANTHROPIC_API_KEY=...\n')
+  }
+}
+
+await startBackend()
 
 // 4. Frontend: start Vite and open the browser
 console.log('\nStarting the app. Close this window (or press Ctrl+C) to stop it.\n')
 const dev = spawn(npm, ['run', 'dev', '--', '--open'], { stdio: 'inherit', shell: isWin, env })
-dev.on('exit', (code) => process.exit(code ?? 0))
-for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => dev.kill(sig))
+children.push(dev)
+const stopAll = (code = 0) => {
+  for (const c of children) if (!c.killed) c.kill()
+  process.exit(code)
+}
+dev.on('exit', (code) => stopAll(code ?? 0))
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => stopAll(0))

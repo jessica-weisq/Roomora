@@ -1,0 +1,11 @@
+fastapi[standard]>=0.115
+python-multipart
+anthropic>=0.40
+pillow
+pillow-heif
+numpy<2
+trimesh
+uvicorn
+# for the tests
+pytest
+httpx

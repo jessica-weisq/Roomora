@@ -90,11 +90,46 @@ function PlanModel({ plan, selected, onSelect, labelLayer }: { plan: Plan; selec
   )
 }
 
-function GltfModel({ url }: { url: string }) {
+const HIGHLIGHT = new THREE.Color('#3d6bff')
+
+function GltfModel({ url, selected, onSelect }: { url: string; selected: string | null; onSelect: (id: string) => void }) {
   const { scene } = useGLTF(url)
-  // Assumes the backend's .glb uses metres, y up, with its origin at the floor plan's top-left corner
-  // (x right, z down the page), the same as the plan coordinates.
-  return <primitive object={scene} />
+  // The backend's .glb uses metres, y up, origin at the floor plan's top-left corner (x right, z down
+  // the page), like the plan. Its nodes are named "floor__<roomId>", "wall__<roomId>__<n>" and "scan__<roomId>"
+  // ("__" because three.js strips ':' from node names).
+  const floors = useMemo(() => {
+    const found: Record<string, THREE.MeshStandardMaterial> = {}
+    scene.traverse((o) => {
+      const mesh = o as THREE.Mesh
+      if (!mesh.isMesh) return
+      const mat = mesh.material as THREE.MeshStandardMaterial
+      mat.side = THREE.DoubleSide // scans are single-sided surfaces seen from both sides
+      if (mesh.name.startsWith('floor__')) {
+        mesh.material = mat.clone() // own material, so highlighting one floor doesn't tint them all
+        found[mesh.name.slice(7)] = mesh.material as THREE.MeshStandardMaterial
+      }
+    })
+    return found
+  }, [scene])
+
+  useEffect(() => {
+    for (const [id, mat] of Object.entries(floors)) {
+      mat.emissive = id === selected ? HIGHLIGHT : new THREE.Color(0x000000)
+      mat.emissiveIntensity = id === selected ? 0.45 : 0
+    }
+  }, [floors, selected])
+
+  return (
+    <primitive
+      object={scene}
+      onClick={(e: { stopPropagation: () => void; object: THREE.Object3D }) => {
+        e.stopPropagation()
+        let o: THREE.Object3D | null = e.object
+        while (o && !/^(floor|scan|wall)__/.test(o.name)) o = o.parent
+        if (o) onSelect(o.name.split('__')[1])
+      }}
+    />
+  )
 }
 
 function Controls({ handle, plan, model }: { handle: Ref<SceneHandle>; plan: Plan; model: RefObject<THREE.Group | null> }) {
@@ -151,7 +186,7 @@ export function ModelScene({ plan, modelUrl, selected, onSelect, handle, labelLa
       <group ref={model} position={[-plan.width / 2, 0, -plan.depth / 2]}>
         {modelUrl ? (
           <Suspense fallback={null}>
-            <GltfModel url={modelUrl} />
+            <GltfModel url={modelUrl} selected={selected} onSelect={onSelect} />
           </Suspense>
         ) : (
           <PlanModel plan={plan} selected={selected} onSelect={onSelect} labelLayer={labelLayer} />

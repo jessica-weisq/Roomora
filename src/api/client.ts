@@ -40,5 +40,8 @@ export async function startBuild(req: BuildRequest): Promise<{ jobId: string }> 
 /** Poll this until state is "done" or "failed". */
 export async function getBuildStatus(jobId: string): Promise<BuildStatus> {
   if (USE_MOCK) return mockGetBuildStatus(jobId)
-  return json(await fetch(`${API_URL}/build/${encodeURIComponent(jobId)}`))
+  const status = await json<BuildStatus>(await fetch(`${API_URL}/build/${encodeURIComponent(jobId)}`))
+  // Accept a modelUrl relative to the API (e.g. "/model/abc.glb") as well as a full URL.
+  if (status.modelUrl) status.modelUrl = new URL(status.modelUrl, new URL(API_URL + '/', window.location.href)).toString()
+  return status
 }

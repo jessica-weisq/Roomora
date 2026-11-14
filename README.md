@@ -2,7 +2,8 @@
 
 Frontend for the hackathon project. The user uploads a floor plan and room photos, we match each photo to a room automatically, they check any we're unsure about, we build the model, and they explore it in 3D.
 
-React + Vite + TypeScript, with three.js through react-three-fiber and drei for the viewer.
+- **Frontend** (this folder): React + Vite + TypeScript, with three.js through react-three-fiber and drei for the viewer. Hosted on **Netlify**.
+- **Backend** (`backend/`): Python on **Modal** GPUs. Claude reads the floor plan and matches photos to rooms; **MASt3R** reconstructs each room in 3D; the rooms are placed on the plan and exported as one .glb. See [backend/README.md](backend/README.md).
 
 ## Run it
 
@@ -20,7 +21,7 @@ npm run build      # type-check + production build into dist/
 
 On a Mac, if double-clicking `start.command` says it can't be opened, right-click it → Open the first time.
 
-Out of the box it uses a **mock backend** (`src/api/mock.ts`), so the whole flow works with no server. The mock always marks the last photo as "not sure" so you can see the Review screen.
+If Modal is installed and logged in (see [backend/README.md](backend/README.md)), the launcher also starts the real backend with `modal serve` and connects the app to it. Otherwise the app uses its **mock backend** (`src/api/mock.ts`), so the whole flow works with no server. The mock always marks the last photo as "not sure" so you can see the Review screen.
 
 ## Screens
 
@@ -37,7 +38,7 @@ State lives in `src/state/ProjectContext.tsx` (in memory only, so refreshing a l
 
 ## Connecting the real backend
 
-All network calls are in `src/api/client.ts`, and the shapes are in `src/api/types.ts`. To switch over, create `.env.local`:
+The backend in `backend/` implements the API below. All network calls are in `src/api/client.ts`, and the shapes are in `src/api/types.ts`. The launcher wires this up for you; to do it by hand, create `.env.local`:
 
 ```
 VITE_USE_MOCK=false
@@ -126,8 +127,15 @@ Keep `FAL_KEY` on the backend. Anything in the frontend's `VITE_…` variables i
 
 If `modelUrl` is set, the viewer loads it. Export it in metres, y up, with the origin at the plan's top-left corner (x right, z down the page), so it lines up with the plan's coordinates. If `modelUrl` is missing, the viewer draws the plan as a simple dollhouse model, and **Download .glb** exports that.
 
+## Deploying
+
+**Frontend → Netlify.** In Netlify: Add new site → Import an existing project → pick this GitHub repo. `netlify.toml` already sets the build command, output folder and Node version, so the defaults are right. Then in Site configuration → Environment variables, add `VITE_USE_MOCK=false` and `VITE_API_URL=<your Modal URL>`, and redeploy. Every push to `main` rebuilds the site, and each branch gets a preview link.
+
+**Backend → Modal.** `modal deploy backend/app.py` once by hand, or let `.github/workflows/deploy-backend.yml` do it on every push to `main` that changes `backend/`. It needs the repo secrets `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` (from modal.com → Settings → API tokens). Only the repo's owner can add secrets and connect Netlify.
+
 ## Still to do
 
 - Product name: search for `[Product name]` in `src/components/Header.tsx`
 - **Share link** currently copies the page URL, which only works on the same machine. It needs the backend to store models and give each project a URL.
-- Clicking rooms works on the built-in dollhouse model but not on a loaded .glb. To support it, name each room's floor mesh after its room id and look it up on click.
+- The MASt3R step hasn't been run on a GPU yet (see backend/README.md, "Limits worth knowing").
+- MASt3R is licensed for non-commercial use only.
