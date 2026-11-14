@@ -48,7 +48,7 @@ gpu_image = (
 )
 
 
-@app.cls(image=gpu_image, gpu="L4", volumes={"/data": data}, secrets=[secret], timeout=30 * 60, scaledown_window=5 * 60)
+@app.cls(image=gpu_image, gpu="T4", volumes={"/data": data}, secrets=[secret], timeout=30 * 60, scaledown_window=5 * 60)
 class Builder:
     @modal.enter()
     def load_model(self):
