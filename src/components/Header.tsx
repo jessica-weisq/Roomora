@@ -11,7 +11,7 @@ export function Header({ step, right }: { step?: number; right?: ReactNode }) {
         <div className="brand">
           <Icon name="cube" size={26} />
           {/* TODO: product name */}
-          <span>[Product name]</span>
+          <span>[Roomora]</span>
         </div>
         {step !== undefined ? (
           <nav aria-label="Progress">
