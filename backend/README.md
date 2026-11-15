@@ -49,9 +49,9 @@ To change the key later: `modal secret create photos-to-3d GEMINI_API_KEY=... --
 
 ## Running it
 
-- **Easiest:** double-click `start.bat` / `start.command` in the repo root. If Modal is installed and logged in, it runs `modal serve backend/app.py` and points the frontend at it.
-- **By hand:** `modal serve backend/app.py` prints a temporary URL and reloads when you save. Put it in `.env.local` as `VITE_API_URL=...` with `VITE_USE_MOCK=false`.
-- **Permanently:** `modal deploy backend/app.py` gives a fixed URL (`https://<workspace>--photos-to-3d-api.modal.run`). Set that as `VITE_API_URL` in Netlify. The GitHub Action in `.github/workflows/deploy-backend.yml` does this on every push to `main` once the repo has `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` secrets.
+- **Deployed (what the site uses):** `export PYTHONUTF8=1 && python -m modal deploy backend/app.py` (the first part is for Git Bash on Windows) updates the fixed URL `https://robinsonwh--photos-to-3d-api.modal.run`, which the committed `.env` points the frontend at. `deploy-backend.yml` here can do this on every push to `main`: move it to `.github/workflows/` and add the repo secrets `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`.
+- **While working on the backend:** `modal serve backend/app.py` prints a temporary URL and reloads when you save. Put it in `.env.local` as `VITE_API_URL=...`, which overrides `.env`.
+- **Without Modal:** `python backend/local.py` runs the API on your own machine (see below); point the frontend at it with `VITE_API_URL=http://localhost:8000` in `.env.local`.
 
 The **first** run builds the GPU image: PyTorch, MASt3R and its 2.7 GB of weights. Expect 10–20 minutes. After that it's cached and a cold start takes about a minute.
 

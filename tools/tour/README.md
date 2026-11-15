@@ -73,7 +73,7 @@ answers `veduta:reply {id, result | error}` after calling `furnishRoom()` in `sr
 
 ## Street View key
 
-Inside Veduta, set `VITE_GOOGLE_MAPS_KEY` (in `.env.local`, or Netlify's environment variables). For the
+Inside Veduta, set `VITE_GOOGLE_MAPS_KEY` (in `.env.local`, or the Vercel project's environment variables for the live site). For the
 sample on its own, put it in `public/tour/config.js` as `MAPS_API_KEY`. Enable the Maps JavaScript, Maps
 Static and Geocoding APIs, and restrict the key to your site's address: a browser key is always visible.
 Without a key the street shows the front photo.
