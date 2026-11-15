@@ -19,6 +19,20 @@
     c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
     return c.toDataURL("image/jpeg", 0.9);
   };
+  // Is this picture (nearly) the same as the render? Compared small and grey, so size and compression don't count.
+  // Checked here as well as on the server, so a result that's just the design sent back is never passed off as new.
+  const sameAsRender = (renderUrl, resultUrl) => new Promise((resolve) => {
+    const load = (src) => new Promise((ok) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => ok(im); im.onerror = () => ok(null); im.src = src; });
+    Promise.all([load(renderUrl), load(resultUrl)]).then(([a, b]) => {
+      if (!a || !b) return resolve(false);
+      try {
+        const grey = (im) => { const c = document.createElement("canvas"); c.width = 96; c.height = 64; const g = c.getContext("2d"); g.drawImage(im, 0, 0, 96, 64);
+          const d = g.getImageData(0, 0, 96, 64).data, out = new Float32Array(96 * 64); for (let i = 0; i < out.length; i++) out[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]; return out; };
+        const ga = grey(a), gb = grey(b); let sum = 0; for (let i = 0; i < ga.length; i++) sum += Math.abs(ga[i] - gb[i]);
+        resolve(sum / ga.length < 7);
+      } catch (e) { resolve(false); }   // a picture from a server that doesn't allow reading it back
+    });
+  });
   const plainError = (e) => {
     let m = (e && e.message) || String(e || "");
     try { const j = JSON.parse(m); if (j && j.detail) m = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); } catch (_) { /* not JSON */ }
@@ -158,7 +172,7 @@
           <div class="rm-grid">
             <figure class="rm-fig rm-photo"><img alt=""><figcaption>The room now (your photo)</figcaption></figure>
             <figure class="rm-fig rm-design"><img alt=""><figcaption>Your design in the 3D walk</figcaption></figure>
-            <figure class="rm-fig rm-result"><div class="rm-wait"><span class="rm-spin" aria-hidden="true"></span><p class="rm-status" aria-live="polite"></p></div><img alt="" hidden><p class="rm-note" hidden></p><figcaption>Reimagined with Fal: an AI impression, not a photo</figcaption></figure>
+            <figure class="rm-fig rm-result"><div class="rm-wait"><span class="rm-spin" aria-hidden="true"></span><p class="rm-status" aria-live="polite"></p></div><img alt="" hidden><p class="rm-note" hidden></p><figcaption>Reimagined with Fal: an AI impression, not a photo <span class="rm-made"></span></figcaption></figure>
           </div>
           <div class="rm-foot">
             <label class="rm-notes-l">Anything to tell Fal? <input type="text" class="rm-notes" maxlength="300" placeholder="For example: evening light, linen curtains"></label>
@@ -195,8 +209,12 @@
           await new Promise((ok, bad) => { img.onload = ok; img.onerror = () => bad(new Error("The reimagined image couldn’t be loaded.")); img.src = res.imageUrl; });
           img.hidden = false; $(".rm-wait").hidden = true;
           // a note under the picture when it isn't really a reimagining
+          const unchanged = !res.mock && (res.unchanged || await sameAsRender(last.render, res.imageUrl));
           const note = res.mock ? "This is Veduta’s mock backend, which can’t call Fal, so this is your design as rendered. Connect the real backend with FAL_KEY set to reimagine it."
-            : res.unchanged ? "Fal sent back almost exactly your design, even after a second try. Try again, perhaps with something to tell it below, or set a different model on the backend (FAL_REIMAGINE_MODEL)." : "";
+            : unchanged ? (res.model === undefined
+              ? "Fal sent back your design unchanged. The backend running this site is older than the tour: redeploy it (modal deploy app.py) to get the fallback model that re-renders it properly."
+              : "Fal sent back almost exactly your design, with every model it tried. Try again, perhaps with something to tell it below, or set other models on the backend (FAL_REIMAGINE_MODEL, FAL_REIMAGINE_FALLBACK).") : "";
+          $(".rm-made").textContent = res.model ? `Made with ${res.model}` : "";
           $(".rm-note").textContent = note; $(".rm-note").hidden = !note;
           const save = $(".rm-save"); save.href = res.imageUrl; save.hidden = false;
         } catch (e) {

@@ -684,3 +684,31 @@ def test_depth_falls_back_to_depth_anything(monkeypatch):
     assert make_depth_fn(local) is local                # no fal key: just Depth Anything
     with pytest.raises(RuntimeError):                   # and no fallback to hide the error behind
         make_depth_fn(None, moge=broken)(b"x")
+
+
+def test_reimagine_falls_back_when_the_first_model_changes_nothing():
+    from core.reimagine import arguments_for, reimagine_with
+
+    render = _jpeg((200, 200, 200))
+    redone = _jpeg((90, 60, 40))
+    calls = []
+
+    def call(model, args):
+        calls.append((model, sorted(args)))
+        return render if "nano" in model else redone   # the editing model sends the mock-up straight back
+
+    prompts = {"full": "full", "stronger": "stronger", "short": "short"}
+    out = reimagine_with(call, render, ["u1"], ["fal-ai/nano-banana/edit", "fal-ai/flux/dev/image-to-image"], prompts)
+    assert out["model"] == "fal-ai/flux/dev/image-to-image" and out["unchanged"] is False and out["image"] == redone
+    assert [c[0] for c in calls] == ["fal-ai/nano-banana/edit", "fal-ai/nano-banana/edit", "fal-ai/flux/dev/image-to-image"]
+    # each kind of model gets the arguments it takes
+    assert "image_urls" in arguments_for("fal-ai/nano-banana/edit", ["a", "b"], "p", "s")
+    i2i = arguments_for("fal-ai/flux/dev/image-to-image", ["a", "b"], "p", "s")
+    assert i2i["image_url"] == "a" and i2i["prompt"] == "s" and 0.4 < i2i["strength"] < 0.8
+    # every model unchanged: the result says so; a model that errors is skipped
+    def broken(model, args):
+        if "flux" in model:
+            raise RuntimeError("not available")
+        return render
+    out = reimagine_with(broken, render, ["u1"], ["fal-ai/nano-banana/edit", "fal-ai/flux/dev/image-to-image"], prompts)
+    assert out["unchanged"] is True and out["model"] == "fal-ai/nano-banana/edit"

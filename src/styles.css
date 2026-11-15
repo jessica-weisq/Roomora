@@ -345,3 +345,6 @@ button, input, select { font: inherit; }
 .demo-text { margin: 0; color: var(--muted); max-width: 640px; }
 .demo-actions { display: flex; flex-wrap: wrap; gap: 12px; }
 .demo-frame { flex: 1; min-height: 420px; width: 100%; border: 1px solid var(--line); border-radius: var(--radius); background: #1b1f27; }
+
+/* which build is live */
+.build-stamp { opacity: 0.55; }

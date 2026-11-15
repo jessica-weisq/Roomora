@@ -17,9 +17,17 @@ import os
 import sys
 from typing import Callable
 
+import logging
+
 from .panorama import first_image_url
 
+log = logging.getLogger("photos-to-3d")
+
 DEFAULT_MODEL = "fal-ai/nano-banana/edit"
+# Used when the first model sends the mock-up back (nearly) unchanged: an image-to-image model, which always
+# re-renders the whole picture, keeping its composition and colours by how strongly it starts from it.
+DEFAULT_FALLBACK = "fal-ai/flux/dev/image-to-image"
+I2I_STRENGTH = 0.6   # 0 = the mock-up as it is, 1 = ignore it; around 0.6 keeps layout and colours, renews the look
 MAX_SIDE = 1536
 
 
@@ -105,23 +113,74 @@ def to_jpeg(data: bytes, max_side: int = MAX_SIDE) -> bytes:
     return out.getvalue()
 
 
+def photo_prompt(room_name: str, furniture: list[str] | None = None, notes: str = "") -> str:
+    """A short prompt for image-to-image models (which read a description of the result, not instructions)."""
+    room = (room_name or "room").lower()
+    p = (f"A professional interior photograph of a {room}, photorealistic, real materials: wood grain, woven "
+         "upholstery, painted plaster, glass and metal; soft natural daylight, real shadows and reflections, "
+         "shot on a full-frame camera, sharp, true colours.")
+    items = [str(f).strip() for f in (furniture or []) if str(f).strip()]
+    if items:
+        p += " In the room: " + "; ".join(items)[:700] + "."
+    notes = (notes or "").strip()
+    return p + (f" {notes[:200]}" if notes else "")
+
+
+def arguments_for(model: str, urls: list[str], prompt: str, short_prompt: str) -> dict:
+    """What each kind of fal model takes."""
+    if "image-to-image" in model:   # FLUX and similar: one image, a description, and how far to move from it
+        return {"image_url": urls[0], "prompt": short_prompt, "strength": I2I_STRENGTH, "num_inference_steps": 40,
+                "guidance_scale": 3.5, "num_images": 1, "enable_safety_checker": True}
+    if "kontext" in model:          # FLUX Kontext: one image and instructions
+        return {"image_url": urls[0], "prompt": prompt, "num_images": 1, "output_format": "jpeg"}
+    return {"prompt": prompt, "image_urls": urls, "num_images": 1, "output_format": "jpeg"}   # Nano Banana and the like
+
+
+def reimagine_with(call: Callable[[str, dict], bytes], render: bytes, urls: list[str], models: list[str],
+                   prompts: dict) -> dict:
+    """Try the models in turn until one actually re-renders the mock-up.
+
+    call(model, arguments) -> image bytes. prompts: {"full", "stronger", "short"}. The first model gets a second,
+    firmer try if it sends the mock-up back unchanged; after that the next model is tried. Returns the image,
+    whether it's still unchanged, and which model made it.
+    """
+    best, best_model, last_error = None, None, None
+    for i, model in enumerate(models):
+        tries = [prompts["full"], prompts["stronger"]] if i == 0 else [prompts["full"]]
+        for prompt in tries:
+            try:
+                image = call(model, arguments_for(model, urls, prompt, prompts["short"]))
+            except Exception as e:   # a model that fails or isn't available: try the next
+                log.warning("Reimagine: %s failed: %s", model, e)
+                last_error = e
+                break
+            if not looks_unchanged(render, image):
+                return {"image": image, "unchanged": False, "model": model}
+            log.warning("Reimagine: %s sent the mock-up back almost unchanged", model)
+            best, best_model = image, model
+    if best is None:
+        raise last_error or RuntimeError("No model returned an image")
+    return {"image": best, "unchanged": True, "model": best_model}
+
+
 def make_fal_reimagine(model: str | None = None, timeout: float = 240) -> Callable[..., dict]:
-    """Returns run(render, photo, room_name, notes, photo_is_this_room) -> {"image": bytes, "unchanged": bool}."""
+    """Returns run(render, photo, room_name, notes, photo_is_this_room, furniture) -> {"image", "unchanged", "model"}."""
     import fal_client  # reads FAL_KEY
     import httpx
 
-    model = model or os.environ.get("FAL_REIMAGINE_MODEL", DEFAULT_MODEL)
+    first = model or os.environ.get("FAL_REIMAGINE_MODEL", DEFAULT_MODEL)
+    fallback = os.environ.get("FAL_REIMAGINE_FALLBACK", DEFAULT_FALLBACK)
+    models = [first] + ([fallback] if fallback and fallback != first else [])
 
-    def once(urls: list[str], prompt: str) -> bytes:
-        result = fal_client.subscribe(
-            model,
-            arguments={"prompt": prompt, "image_urls": urls, "num_images": 1, "output_format": "jpeg"},
-            client_timeout=timeout,
-        )
+    def call(m: str, arguments: dict) -> bytes:
+        result = fal_client.subscribe(m, arguments=arguments, client_timeout=timeout)
         url = first_image_url(result)
         if not url:
             keys = list(result) if isinstance(result, dict) else type(result).__name__
-            raise RuntimeError(f"{model} returned no image (got {keys})")
+            text = (result.get("description") or result.get("text") or "") if isinstance(result, dict) else ""
+            raise RuntimeError(f"{m} returned no image (got {keys}) {str(text)[:200]}")
+        if isinstance(result, dict) and result.get("description"):
+            log.info("Reimagine: %s said: %s", m, str(result["description"])[:300])
         r = httpx.get(url, timeout=120, follow_redirects=True)
         r.raise_for_status()
         return r.content
@@ -132,10 +191,12 @@ def make_fal_reimagine(model: str | None = None, timeout: float = 240) -> Callab
         urls = [fal_client.upload(render, "image/jpeg")]
         if photo:
             urls.append(fal_client.upload(photo, "image/jpeg"))
-        image = once(urls, prompt_for(room_name, bool(photo), notes, photo_is_this_room, furniture=furniture))
-        if looks_unchanged(render, image):   # an edit model that barely edited: ask again, harder
-            image = once(urls, prompt_for(room_name, bool(photo), notes, photo_is_this_room, stronger=True, furniture=furniture))
-        return {"image": image, "unchanged": looks_unchanged(render, image)}
+        prompts = {
+            "full": prompt_for(room_name, bool(photo), notes, photo_is_this_room, furniture=furniture),
+            "stronger": prompt_for(room_name, bool(photo), notes, photo_is_this_room, stronger=True, furniture=furniture),
+            "short": photo_prompt(room_name, furniture, notes),
+        }
+        return reimagine_with(call, render, urls, models, prompts)
 
     return run
 
@@ -152,4 +213,4 @@ if __name__ == "__main__":
     res = make_fal_reimagine()(to_jpeg(design.read_bytes()), to_jpeg(photo.read_bytes()) if photo else None, name)
     out = design.with_name(f"{design.stem}-reimagined.jpg")
     out.write_bytes(res["image"])
-    print(f"Wrote {out}" + (" (but it's almost the same as the design: try another model with FAL_REIMAGINE_MODEL)" if res["unchanged"] else ""))
+    print(f"Wrote {out}, made by {res['model']}" + (" (but it's almost the same as the design: try another model with FAL_REIMAGINE_MODEL)" if res["unchanged"] else ""))

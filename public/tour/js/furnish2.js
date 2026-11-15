@@ -245,7 +245,8 @@
       chair(g, o) {
         const f = fabric((o && o.chairColor) || "#d9cfbf", 0.85), wd = wood(darkOak);
         RB(g, 0.47, 0.09, 0.47, 0.035, f, 0, 0.43, 0);
-        const bk = RB(g, 0.45, 0.48, 0.07, 0.03, f, 0, 0.5, 0.21); bk.rotation.x = 0.08;
+        // backrest at the back (-z), so the chair faces +z like every other piece (rot 0 faces down the plan)
+        const bk = RB(g, 0.45, 0.48, 0.07, 0.03, f, 0, 0.5, -0.21); bk.rotation.x = -0.08;
         [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => leg(g, a * 0.2, b * 0.2, 0.43, wd, 0.018, 0.013));
       },
       roundTable(g, o) {

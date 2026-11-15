@@ -442,3 +442,5 @@ body.plan-large .rv-bar { max-width: calc(100% - 2 * var(--gap) - min(62vw, 760p
 
 .rm-note { margin: 0; padding: 8px 12px; border-radius: 8px; background: #f4e7cf; color: #5a4322; font-size: 13px; line-height: 1.45; }
 .rm-note[hidden] { display: none; }
+.rm-made { opacity: 0.7; }
+.rm-made:not(:empty)::before { content: '· '; }

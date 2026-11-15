@@ -807,12 +807,52 @@
     return out;
   }
 
+  // Turn seating to face what it's for. The photo reading gives only four rough directions and often gets
+  // them wrong, so: a chair faces its nearest table; an armchair faces its coffee table, or else the other
+  // seating (so a pair face each other), or else the middle of the room; a sofa faces its coffee table.
+  // (rot: 0 faces down the plan, 90 right, 180 up, 270 left; plan pixels.)
+  const TABLES_FOR = {
+    chair: ["table", "roundTable", "desk", "island", "coffee", "coffeeRound"],
+    armchair: ["coffee", "coffeeRound", "ottoman", "table", "roundTable"],
+    sofa: ["coffee", "coffeeRound", "ottoman"],
+  };
+  const SEATS = ["sofa", "armchair", "chair", "bench"];
+  function faceSeats(items, room, mpp) {
+    const m = (v) => v / mpp, [x0, y0, x1, y1] = room.px, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    const nearest = (it, types, reach) => {
+      let best = null, bd = m(reach);
+      for (const o of items) {
+        if (o === it || !types.includes(o.type)) continue;
+        const d = Math.hypot(o.x - it.x, o.y - it.y);
+        if (d < bd && d > 1) { bd = d; best = o; }
+      }
+      return best;
+    };
+    const towards = (it, tx, ty, step) => {
+      const deg = (Math.atan2(tx - it.x, ty - it.y) * 180) / Math.PI;
+      return ((Math.round(deg / step) * step) % 360 + 360) % 360;
+    };
+    for (const it of items) {
+      if (it.fromPlan || !TABLES_FOR[it.type]) continue;
+      if (it.type === "sofa") {   // only when it has a coffee table to face, and square to the room
+        const t = nearest(it, TABLES_FOR.sofa, 2.5);
+        if (t) it.rot = towards(it, t.x, t.y, 90);
+        continue;
+      }
+      const t = nearest(it, TABLES_FOR[it.type], it.type === "chair" ? 2.2 : 2.5)
+        || nearest(it, SEATS, it.type === "chair" ? 4 : 4.5);
+      it.rot = t ? towards(it, t.x, t.y, 5) : towards(it, cx, cy, 5);
+    }
+    return items;
+  }
+
   // A room's furniture: the plan's fixtures, plus the given pieces (from the photos, or typical ones) that the
-  // fixtures don't already stand for, all settled so they fit.
+  // fixtures don't already stand for, all settled so they fit and with the seating facing the right way.
   function furnishRoom(room, fixtures, pieces, grid) {
     const covered = new Set((fixtures || []).flatMap((f) => COVERS[Object.keys(COVERS).find((k) => fixtureType(f) === k)] || []));
-    const keep = pieces.filter((it) => !covered.has(it.type));
-    return settle((fixtures || []).concat(keep), room, grid);
+    const keep = pieces.filter((it) => !covered.has(it.type)).map((it) => Object.assign({}, it));
+    const all = faceSeats((fixtures || []).concat(keep), room, grid.mpp);
+    return faceSeats(settle(all, room, grid), room, grid.mpp);   // again, as settling may have moved things
   }
   const fixtureType = (it) => ({ counter: "kitchen_run", island: "island", bath: "bath", shower: "shower", wc: "wc", vanity: "basin", bed: "bed", wardrobe: "wardrobe", sofa: "sofa", table: "table" })[it.type];
 

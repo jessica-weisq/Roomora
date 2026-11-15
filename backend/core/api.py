@@ -240,6 +240,7 @@ def create_app(
             furniture = [str(f)[:120] for f in req.furniture[:40]]
             out = reimagine_fn(render, photo, req.roomName[:80], req.notes[:300], req.photoIsThisRoom, furniture)
             result, unchanged = (out["image"], bool(out.get("unchanged"))) if isinstance(out, dict) else (out, False)
+            made_by = out.get("model") if isinstance(out, dict) else None
         except Exception:
             log.exception("Reimagine failed")
             raise HTTPException(502, "Fal couldn't reimagine the room just now. Please try again.")
@@ -251,7 +252,7 @@ def create_app(
         host = request.headers.get("host") or request.url.netloc
         local = host.startswith(("localhost", "127.0.0.1", "0.0.0.0"))
         scheme = request.headers.get("x-forwarded-proto") or ("http" if local else "https")
-        return {"imageUrl": f"{scheme}://{host}/reimagined/{rid}.jpg", "unchanged": unchanged}
+        return {"imageUrl": f"{scheme}://{host}/reimagined/{rid}.jpg", "unchanged": unchanged, "model": made_by}
 
     @app.get("/reimagined/{name}")
     def reimagined(name: str) -> FileResponse:

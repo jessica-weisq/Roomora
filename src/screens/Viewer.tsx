@@ -10,6 +10,7 @@ import { PanoramaDialog } from '../viewer/PanoramaDialog'
 import { TourDialog } from '../viewer/TourDialog'
 import { downloadGlb } from '../lib/exportGlb'
 import { resolvedAssignments, useProject } from '../state/ProjectContext'
+import { BUILD } from '../build'
 
 /**
  * The property's name: the start of its address ("24-25 Albion Street, London"), else the floor plan's file name
@@ -202,6 +203,7 @@ export function Viewer() {
             )}
             <p className="stage-hint">
               {view === '3d' ? 'Drag to orbit · Scroll to zoom · Right-drag to pan · Click a room to select it' : 'Click a room to select it'}
+              <span className="build-stamp"> · build {BUILD}</span>
             </p>
           </section>
 

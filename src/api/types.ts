@@ -142,6 +142,8 @@ export interface ReimagineResponse {
   mock?: boolean
   /** true when Fal sent back something almost the same as the render, even after a second try */
   unchanged?: boolean
+  /** which fal model made the picture */
+  model?: string | null
 }
 
 export const BUILD_STEPS: { label: string; detail: string }[] = [
