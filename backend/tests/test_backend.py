@@ -613,3 +613,74 @@ def test_fixtures_from_the_plan():
     assert bath["y"] - 0.05 <= shower["y"] and shower["y"] + shower["depth"] <= bath["y"] + bath["depth"] + 0.05
     assert shower["x"] - bath["x"] < 0.1
     assert "Entrance hall" in ids
+
+
+def _moge_scene(opengl=True, W=640, H=480):
+    """A camera looking at a back wall 5 m away with a box 2 m away in the middle, as a point cloud."""
+    fx = 0.8
+    fy = fx * W / H
+    u, v = np.meshgrid(np.linspace(0.005, 0.995, 200), np.linspace(0.005, 0.995, 150))
+    z = np.where((abs(u - 0.5) < 0.1) & (abs(v - 0.5) < 0.1), 2.0, 5.0)
+    pts = np.stack([(u - 0.5) * z / fx, (v - 0.5) * z / fy, z], -1).reshape(-1, 3)
+    keep = np.random.default_rng(0).random(len(pts)) > 0.2       # some pixels masked out
+    pts = pts[keep]
+    if opengl:
+        pts = pts * np.array([1.0, -1.0, -1.0])
+    return pts, (fx, fy, 0.5, 0.5), W, H
+
+
+@pytest.mark.parametrize("opengl", [True, False])
+def test_moge_points_project_to_tour_depth(opengl):
+    from core.depth_fal import points_to_inverse_depth
+
+    pts, (fx, fy, cx, cy), W, H = _moge_scene(opengl)
+    inv = points_to_inverse_depth(pts, fx, fy, cx, cy, W, H)
+    h, w = inv.shape
+    assert w <= 384 and abs(w / h - W / H) < 0.05 and (inv > 0).all()
+    assert abs(inv[h // 2, w // 2] - 0.5) < 0.02  # the box, 2 m away
+    assert abs(inv[2, 2] - 0.2) < 0.02            # the wall, 5 m away
+    with pytest.raises(ValueError):                # points that miss the picture: a wrong projection
+        points_to_inverse_depth(pts + np.array([50.0, 0, 0]) * (-1 if opengl else 1), fx, fy, cx, cy, W, H)
+
+
+def test_moge_depth_through_fake_fal(monkeypatch):
+    import types
+
+    import httpx
+    from core import depth_fal
+
+    pts, (fx, fy, cx, cy), W, H = _moge_scene()
+    ply = trimesh.PointCloud(pts).export(file_type="ply")
+    seen = {}
+    fake = types.SimpleNamespace(
+        upload=lambda data, content_type: seen.setdefault("upload", (len(data), content_type)) and "https://fal.test/in.jpg",
+        subscribe=lambda model, arguments, client_timeout: seen.setdefault("args", (model, arguments)) and {
+            "point_cloud": {"url": "https://fal.test/pc.ply"}, "fov_x": 64.0,
+            "intrinsics": [[fx, 0, cx], [0, fy, cy], [0, 0, 1]]},
+    )
+    monkeypatch.setitem(sys.modules, "fal_client", fake)
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: types.SimpleNamespace(content=ply, raise_for_status=lambda: None))
+    buf = io.BytesIO()
+    Image.new("RGB", (W, H), (120, 110, 100)).save(buf, "JPEG")
+    png = depth_fal.make_moge_depth()(buf.getvalue())
+    assert seen["upload"][1] == "image/jpeg"
+    assert seen["args"][0] == "microsoft/moge-2" and seen["args"][1]["export_ply"] is True
+    rgb = np.asarray(Image.open(io.BytesIO(png)).convert("RGB")).astype(np.int64)
+    assert rgb.shape == (288, 384, 3)
+    d = rgb[..., 0] * 256 + rgb[..., 1]                 # the tour's 16-bit packing
+    assert d[144, 192] > d[10, 10]                      # near is high
+
+
+def test_depth_falls_back_to_depth_anything(monkeypatch):
+    from core.depth_fal import make_depth_fn
+
+    def broken(jpeg):
+        raise RuntimeError("fal is down")
+
+    assert make_depth_fn(lambda j: b"local", moge=broken)(b"x") == b"local"
+    assert make_depth_fn(lambda j: b"local", moge=lambda j: b"moge")(b"x") == b"moge"
+    monkeypatch.delenv("FAL_KEY", raising=False)
+    local = lambda j: b"local"  # noqa: E731
+    assert make_depth_fn(local) is local                # no fal key: just Depth Anything
+    with pytest.raises(RuntimeError):                   # and no fallback to hide the error behind
+        make_depth_fn(None, moge=broken)(b"x")

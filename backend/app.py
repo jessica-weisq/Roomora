@@ -107,4 +107,7 @@ def api():
         from core.reimagine import make_fal_reimagine
 
         reimagine = make_fal_reimagine()
-    return create_app(store, start_build, match_photos, furnish_room, depth_png, reimagine)
+    from core.depth_fal import make_depth_fn
+
+    # 3D photos: MoGe-2 on fal when FAL_KEY is set, falling back to Depth Anything on this CPU
+    return create_app(store, start_build, match_photos, furnish_room, make_depth_fn(depth_png), reimagine)

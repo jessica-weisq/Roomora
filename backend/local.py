@@ -76,8 +76,10 @@ def make_app():
     else:
         logging.warning("No GEMINI_API_KEY or ANTHROPIC_API_KEY: /match returns a fixed demo layout.")
     from core import depth
+    from core.depth_fal import make_depth_fn
 
-    depth_fn = depth.depth_png if depth.available() else None
+    # MoGe-2 on fal when FAL_KEY is set, with Depth Anything (onnxruntime) as the fallback
+    depth_fn = make_depth_fn(depth.depth_png if depth.available() else None)
     if not depth_fn:
         logging.warning("onnxruntime isn't installed: photos in the walk-through stay flat (pip install onnxruntime).")
     return create_app(store, start_build, match, furnish_room if which else demo_furnish, depth_fn, reimagine)

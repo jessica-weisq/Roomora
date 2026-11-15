@@ -4,6 +4,8 @@ Same output as tools/tour/build_depth.py, which made the sample flat's depth map
 inverse depth (near = high) as a 16-bit number packed into red (high byte) and green (low byte), 384 px wide.
 The tour's photo viewer (public/tour/js/roomviewer.js, depthView) turns it into a 3D surface.
 
+When FAL_KEY is set the API uses MoGe-2 on fal instead (core/depth_fal.py), with this as its fallback.
+
 The model (about 100 MB) is read from DEPTH_MODEL, or downloaded once to DEPTH_MODEL_DIR (default
 ~/.cache/veduta). Needs onnxruntime, pillow and numpy.
 """

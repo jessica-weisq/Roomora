@@ -30,3 +30,8 @@ tools/tour/.three-r128.min.js
 /roomora-tour.html
 /veduta-tour.html
 /*.zip
+
+# depth comparisons from python -m core.depth_fal
+*-depth-compare.png
+*-depth-moge.png
+*-depth-local.png

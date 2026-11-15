@@ -8,7 +8,7 @@ POST /build       confirmed photo → room assignments → starts a build job   
 GET  /build/:id   progress; when done, the model URL (and 360° views if enabled)
 GET  /model/:id.glb
 POST /furnish     a room's photos → furniture, floor, wall colour and pictures, for the walk-through   (Gemini or Claude vision)
-GET  /depth/:project/:photo.png   a photo's depth map, for the walk-through's 3D photos     (Depth Anything, CPU)
+GET  /depth/:project/:photo.png   a photo's depth map, for the walk-through's 3D photos     (MoGe-2 on fal, or Depth Anything on CPU)
 GET  /panorama/:job/:room.jpg     a room's 360° view, saved with the build                  (fal, when FAL_KEY is set)
 POST /reimagine   a redesign rendered in the walk-through + the room's photo → a photographic version   (fal)
 ```
@@ -25,8 +25,11 @@ POST /reimagine   a redesign rendered in the walk-through + the room's photo →
 the answer is saved in the project (`furnish/<roomId>.json`). Its furniture types must match what the
 walk-through can draw (`public/tour/js/furnish2.js`); `test_furniture_types_match_the_walkthrough` checks.
 
-**Depth maps** (`core/depth.py`) are made on request and saved in the project (`depth/<photoId>.png`), in the
-same format as `tools/tour/build_depth.py`. The model (about 100 MB) is baked into the Modal web image; locally
+**Depth maps** come from **MoGe-2 on fal** when `FAL_KEY` is set (`core/depth_fal.py`, about $0.01-0.03 a photo): it
+predicts each photo's real 3D shape and camera, so walls come out flat. Compare it with Depth Anything on a photo with
+`FAL_KEY=... python -m core.depth_fal photo.jpg`, and set `DEPTH_PROVIDER=local` to switch it off. Otherwise, and
+whenever fal fails, they're made by Depth Anything (`core/depth.py`).
+Either way they're made on request and saved in the project (`depth/<photoId>.png`), in the same format as `tools/tour/build_depth.py`. The model (about 100 MB) is baked into the Modal web image; locally
 it's downloaded to `~/.cache/veduta` the first time (`pip install onnxruntime`, already in requirements-local.txt).
 
 `core/` is plain Python. `app.py` wires it to Modal; `local.py` runs it on your own machine.
