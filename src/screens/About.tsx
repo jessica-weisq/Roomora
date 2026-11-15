@@ -51,7 +51,7 @@ export function About() {
       <main className="page about">
         <h1 className="page-title">About Veduta</h1>
         <p className="about-lead">
-          Veduta turns a floor plan and a handful of room photos into a 3D model of a home that you can look around from
+          Veduta turns a floor plan and a handful of room photos into a 3D model of a home that you can look around and redesign from
           any device. No 3D scanner, no special camera, no modelling skills.
         </p>
 
