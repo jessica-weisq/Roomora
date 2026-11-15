@@ -323,6 +323,9 @@ button, input, select { font: inherit; }
 .about-credits { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 15px; }
 .about-by, .about-note { color: var(--muted); }
 .about-ctas { margin-top: 44px; display: flex; flex-wrap: wrap; gap: 12px; }
+.london-homes-animation { margin: 28px 0 0; }
+.london-homes-animation video { display: block; width: 100%; height: auto; aspect-ratio: 5 / 4; background: #030711; border-radius: var(--radius); }
+.london-homes-animation figcaption { margin-top: 10px; font-size: 13px; line-height: 1.6; color: var(--muted); }
 .team-photo { max-width: 620px; margin: 24px auto 0; }
 .team-photo img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 12px 30px var(--shadow); }
 

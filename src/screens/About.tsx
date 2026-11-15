@@ -1,6 +1,7 @@
 import { Fragment } from 'react'
 import { Link } from 'react-router-dom'
 import { Header } from '../components/Header'
+import { LondonHomesAnimation } from '../components/LondonHomesAnimation'
 import teamPhoto from '../assets/team-photo.jpg'
 
 const STEPS = [
@@ -54,6 +55,8 @@ export function About() {
           Veduta turns a floor plan and a handful of room photos into a 3D model of a home that you can look around and redesign from
           any device. No 3D scanner, no special camera, no modelling skills.
         </p>
+
+        <LondonHomesAnimation />
 
         <section aria-labelledby="why">
           <h2 id="why">Why?</h2>
