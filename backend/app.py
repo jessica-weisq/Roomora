@@ -22,6 +22,7 @@ secret = modal.Secret.from_name("photos-to-3d")  # GEMINI_API_KEY or ANTHROPIC_A
 
 MAST3R_COMMIT = "main"  # pin a commit hash here if a future change to naver/mast3r breaks things
 WEIGHTS = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
+DEPTH_MODEL_URL = "https://github.com/fabio-sim/Depth-Anything-ONNX/releases/download/v1.0.0/depth_anything_vits14.onnx"  # keep in step with core/depth.py
 
 web_image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -29,10 +30,14 @@ web_image = (
         "fastapi[standard]>=0.115", "python-multipart", "anthropic>=0.40", "google-genai>=1.30",
         "pillow", "pillow-heif", "numpy<2", "trimesh", "onnxruntime",
     )
-    # the depth model for 3D photos (about 100 MB), baked in so it isn't downloaded on every cold start
+    # The depth model for 3D photos (about 100 MB), baked in so it isn't downloaded on every cold start.
+    # Downloaded directly (same URL and file name as core/depth.py) because our code isn't in the image yet here.
     .env({"DEPTH_MODEL_DIR": "/opt/depth"})
-    .add_local_python_source("core", copy=True)
-    .run_commands("python -c 'from core.depth import download_model; download_model()'")
+    .run_commands(
+        "mkdir -p /opt/depth && python -c \"import urllib.request; urllib.request.urlretrieve("
+        f"'{DEPTH_MODEL_URL}', '/opt/depth/depth_anything_vits14.onnx')\""
+    )
+    .add_local_python_source("core")
 )
 
 gpu_image = (
