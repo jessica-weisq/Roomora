@@ -12,9 +12,13 @@ from __future__ import annotations
 import base64
 import copy
 import json
+import logging
 import os
+import time
 import re
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 # Override with ANTHROPIC_MODEL / GEMINI_MODEL if you want a different model.
 DEFAULT_MODEL = "claude-sonnet-5-5"
@@ -204,28 +208,60 @@ def match_photos_gemini(plan_bytes: bytes, plan_mime: str, photos: list[tuple[st
     from google import genai
     from google.genai import types
 
-    client = client or genai.Client()  # reads GEMINI_API_KEY (or GOOGLE_API_KEY)
-    parts: list[Any] = [types.Part.from_text(text="Floor plan:"), types.Part.from_bytes(data=plan_bytes, mime_type=plan_mime)]
-    for i, (_, data) in enumerate(photos):
-        parts.append(types.Part.from_text(text=f"Photo {i}:"))
-        parts.append(types.Part.from_bytes(data=data, mime_type="image/jpeg"))
-    parts.append(types.Part.from_text(text=INSTRUCTIONS_JSON))
+    # Give up after 140 s (Modal web requests are cut at 150 s) and don't retry: the library's default
+    # retries quietly with long back-offs, which looked like a 4-minute hang.
+    client = client or genai.Client(  # reads GEMINI_API_KEY (or GOOGLE_API_KEY)
+        http_options=types.HttpOptions(timeout=140_000, retry_options=types.HttpRetryOptions(attempts=1)),
+    )
 
-    try:
-        response = client.models.generate_content(
-            model=os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
-            contents=parts,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_json_schema=_gemini_schema(),
-                temperature=0,
-                max_output_tokens=8000,
-            ),
+    def build_parts(per_part_resolution: bool) -> list[Any]:
+        # The plan needs detail (small dimension labels); the photos only need "which room is this",
+        # so they go at low resolution, which makes the request several times faster.
+        res = (lambda level: {"media_resolution": {"level": level}}) if per_part_resolution else (lambda level: {})
+        out: list[Any] = [types.Part.from_text(text="Floor plan:"),
+                          types.Part.from_bytes(data=plan_bytes, mime_type=plan_mime, **res("MEDIA_RESOLUTION_HIGH"))]
+        for i, (_, data) in enumerate(photos):
+            out.append(types.Part.from_text(text=f"Photo {i}:"))
+            out.append(types.Part.from_bytes(data=data, mime_type="image/jpeg", **res("MEDIA_RESOLUTION_LOW")))
+        out.append(types.Part.from_text(text=INSTRUCTIONS_JSON))
+        return out
+
+    def config(per_part_resolution: bool) -> Any:
+        return types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_json_schema=_gemini_schema(),
+            temperature=0,
+            max_output_tokens=16000,
+            # Reading a plan and sorting photos doesn't need deep reasoning.
+            thinking_config=types.ThinkingConfig(thinking_level=os.environ.get("GEMINI_THINKING", "MINIMAL").upper()),
+            # Fallback when the API won't take per-image resolution: everything at medium.
+            media_resolution=None if per_part_resolution else "MEDIA_RESOLUTION_MEDIUM",
         )
-    except Exception as e:  # the free tier's per-minute limit is the usual culprit
-        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+
+    def call(per_part_resolution: bool) -> Any:
+        return client.models.generate_content(
+            model=os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
+            contents=build_parts(per_part_resolution),
+            config=config(per_part_resolution),
+        )
+
+    started = time.monotonic()
+    try:
+        try:
+            response = call(per_part_resolution=True)
+        except Exception as e:  # older API versions reject per-image resolution with a 400
+            if "400" in str(e) and "resolution" in str(e).lower():
+                response = call(per_part_resolution=False)
+            else:
+                raise
+    except Exception as e:
+        text = f"{type(e).__name__}: {e}"
+        if "429" in text or "RESOURCE_EXHAUSTED" in text:  # the free tier's per-minute limit
             raise ValueError("The AI is busy right now (free-tier limit). Please wait a minute and try again.") from e
+        if any(k in text.lower() for k in ("timeout", "timed out", "deadline")):
+            raise ValueError("The AI took too long to answer. Please try again, perhaps with fewer photos.") from e
         raise
+    print(f"Gemini matched {len(photos)} photos in {time.monotonic() - started:.1f}s", flush=True)  # shows in Modal logs
     try:
         raw = json.loads(response.text or "")
     except json.JSONDecodeError as e:
