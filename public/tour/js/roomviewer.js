@@ -70,10 +70,19 @@
         title.textContent = r.name;
         sub.textContent = floor ? floor.name : "";
         const m = r.media[i];
-        count.textContent = m.type === "fused" ? `3D room built from ${m.fused.parts.length} photos` : m.depth ? `3D photo ${i + 1} of ${r.media.length}` : m.type === "pano" ? `360° view${r.media.length > 1 ? ` (${i + 1} of ${r.media.length})` : ""}` : `Photo ${i + 1} of ${r.media.length}`;
+        count.textContent = m.type === "fused" ? `3D room built from ${m.fused.parts.length} photos` : m.type === "video" ? `${m.label || "AI-generated video"} · ${i + 1} of ${r.media.length}` : m.depth ? `3D photo ${i + 1} of ${r.media.length}` : m.type === "pano" ? `360° view${r.media.length > 1 ? ` (${i + 1} of ${r.media.length})` : ""}` : `Photo ${i + 1} of ${r.media.length}`;
         prev.hidden = next.hidden = r.media.length < 2;
         renderLinkChips();
         renderEditPanel();
+        if (m.type === "video") {
+          const old = view;
+          view = videoView(r, i);
+          stage.appendChild(view.el);
+          view.layout();
+          requestAnimationFrame(() => view.el.classList.add("is-in"));
+          if (old) { old.el.classList.remove("is-in"); setTimeout(() => old.destroy(), reduceMotion() ? 0 : 420); }
+          return;
+        }
         const { image, placeholder } = await T.mediaImage(P, r, i);
         if (my !== token) return;
         if (m.type === "fused" && window.THREE) {
@@ -161,6 +170,31 @@
             fit.style.width = w + "px"; fit.style.height = h + "px";
           },
           destroy() { wrap.remove(); },
+        };
+      }
+
+      // ---- AI-generated video ----
+      function videoView(r, i) {
+        const m = r.media[i];
+        const wrap = el("div", "rv-view rv-video");
+        const video = document.createElement("video");
+        video.className = "rv-video-player";
+        video.controls = true;
+        video.playsInline = true;
+        video.preload = "metadata";
+        video.setAttribute("aria-label", `${r.name}: ${m.label || "AI-generated video"}`);
+        const source = document.createElement("source");
+        source.src = m.src;
+        source.type = m.mime || "video/mp4";
+        video.appendChild(source);
+        const error = el("p", "rv-video-error", "This video couldn’t load. Please try refreshing the page.");
+        error.hidden = true;
+        video.addEventListener("error", () => { error.hidden = false; });
+        wrap.append(video, error);
+        return {
+          el: wrap,
+          layout() {},
+          destroy() { video.pause(); video.removeAttribute("src"); video.load(); wrap.remove(); },
         };
       }
 

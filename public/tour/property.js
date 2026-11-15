@@ -236,6 +236,12 @@ window.PROPERTY_INLINE =
             1.0,
             18
           ]
+        },
+        {
+          "type": "video",
+          "src": "img/reception-ai-motion.mp4",
+          "mime": "video/mp4",
+          "label": "AI-generated motion view"
         }
       ],
       "links": [
