@@ -92,7 +92,12 @@
   let hashState = null;
   function setHash(h) {
     hashState = h;
-    if (location.hash.slice(1) !== h) history.replaceState(null, "", "#" + h);
+    // Keep the room in the address (so a link or reload comes back to it), where the page has an address of
+    // its own. Some previews run the page with none (about:srcdoc), where the browser refuses; the tour
+    // works the same without it.
+    if (location.hash.slice(1) !== h && /^(https?|file):$/.test(location.protocol)) {
+      try { history.replaceState(null, "", "#" + h); } catch (e) { /* no address to update here */ }
+    }
   }
   const showPlan = (on) => {
     planCard.hidden = !on; planShow.hidden = on;

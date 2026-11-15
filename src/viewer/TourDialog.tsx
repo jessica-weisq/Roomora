@@ -55,7 +55,7 @@ export function TourDialog({ title, startRoom, onClose }: Props) {
 
     async function onMessage(e: MessageEvent) {
       if (e.origin !== origin || e.source !== frame.current?.contentWindow || !e.data || typeof e.data !== 'object') return
-      const msg = e.data as { type: string; id?: number; roomId?: string; render?: string; photo?: string | null; roomName?: string; notes?: string }
+      const msg = e.data as { type: string; id?: number; roomId?: string; render?: string; photo?: string | null; roomName?: string; notes?: string; photoIsThisRoom?: boolean; furniture?: string[] }
       if (msg.type === 'veduta:hello') {
         frame.current?.contentWindow?.postMessage(
           {
@@ -80,7 +80,7 @@ export function TourDialog({ title, startRoom, onClose }: Props) {
       }
       if (msg.type === 'veduta:reimagine' && msg.id != null && typeof msg.render === 'string') {
         try {
-          reply(msg.id, await reimagineRoom({ render: msg.render, photo: msg.photo ?? null, roomName: msg.roomName ?? 'room', notes: msg.notes }))
+          reply(msg.id, await reimagineRoom({ render: msg.render, photo: msg.photo ?? null, roomName: msg.roomName ?? 'room', notes: msg.notes, photoIsThisRoom: msg.photoIsThisRoom !== false, furniture: Array.isArray(msg.furniture) ? msg.furniture.slice(0, 40) : undefined }))
         } catch (err) {
           reply(msg.id, null, { message: err instanceof Error ? err.message : 'Fal couldn’t reimagine the room just now. Try again.' })
         }

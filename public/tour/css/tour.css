@@ -410,6 +410,7 @@ body.plan-large .rv-bar { max-width: calc(100% - 2 * var(--gap) - min(62vw, 760p
 .rm-close { background: var(--stone-line); color: var(--stone-ink); }
 .rm-again:disabled { opacity: 0.55; cursor: progress; }
 .rm-grid { display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 12px; align-items: start; }
+.rm-grid.no-photo { grid-template-columns: 1fr 2fr; }   /* no photo: the result takes the space */
 .rm-fig { margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .rm-fig[hidden] { display: none; }
 .rm-fig img { width: 100%; border-radius: 10px; display: block; background: #0002; }
@@ -438,3 +439,6 @@ body.plan-large .rv-bar { max-width: calc(100% - 2 * var(--gap) - min(62vw, 760p
 
 /* looking around: an open hand, closed while you drag */
 .w3-canvas.is-looking, .rv-pano canvas.is-looking, .rv-depth canvas.is-looking, .is-arranging .w3-canvas.is-looking { cursor: grabbing; }
+
+.rm-note { margin: 0; padding: 8px 12px; border-radius: 8px; background: #f4e7cf; color: #5a4322; font-size: 13px; line-height: 1.45; }
+.rm-note[hidden] { display: none; }

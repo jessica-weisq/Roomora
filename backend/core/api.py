@@ -23,8 +23,9 @@ MatchFn = Callable[[bytes, str, list[tuple[str, bytes]]], dict[str, Any]]
 FurnishFn = Callable[[list[bytes], str, float, float], dict[str, Any]]
 # photo jpeg -> depth map PNG for the walk-through's 3D photos; see core/depth.py
 DepthFn = Callable[[bytes], bytes]
-# (design render jpeg, room photo jpeg or None, room name, notes) -> reimagined image; see core/reimagine.py
-ReimagineFn = Callable[[bytes, "bytes | None", str, str], bytes]
+# (design render jpeg, room photo jpeg or None, room name, notes, photo is of this room) ->
+# {"image": bytes, "unchanged": bool}; see core/reimagine.py
+ReimagineFn = Callable[..., dict]
 MAX_REIMAGINE_BYTES = 12 * 1024 * 1024
 
 
@@ -33,6 +34,8 @@ class ReimagineRequest(BaseModel):
     photo: str | None = None    # data: URL of the room's original photo
     roomName: str = "room"
     notes: str = ""
+    photoIsThisRoom: bool = True   # false: the photo is from elsewhere in the home, a guide to its style
+    furniture: list[str] = []      # the pieces in view: "a teal sofa, centre left, in the middle distance"
 MAX_PHOTOS = 60
 MAX_FURNISH_PHOTOS = 8
 
@@ -234,7 +237,9 @@ def create_app(
         if not render:
             raise HTTPException(400, "There's no design to reimagine.")
         try:
-            result = reimagine_fn(render, photo, req.roomName[:80], req.notes[:300])
+            furniture = [str(f)[:120] for f in req.furniture[:40]]
+            out = reimagine_fn(render, photo, req.roomName[:80], req.notes[:300], req.photoIsThisRoom, furniture)
+            result, unchanged = (out["image"], bool(out.get("unchanged"))) if isinstance(out, dict) else (out, False)
         except Exception:
             log.exception("Reimagine failed")
             raise HTTPException(502, "Fal couldn't reimagine the room just now. Please try again.")
@@ -246,7 +251,7 @@ def create_app(
         host = request.headers.get("host") or request.url.netloc
         local = host.startswith(("localhost", "127.0.0.1", "0.0.0.0"))
         scheme = request.headers.get("x-forwarded-proto") or ("http" if local else "https")
-        return {"imageUrl": f"{scheme}://{host}/reimagined/{rid}.jpg"}
+        return {"imageUrl": f"{scheme}://{host}/reimagined/{rid}.jpg", "unchanged": unchanged}
 
     @app.get("/reimagined/{name}")
     def reimagined(name: str) -> FileResponse:

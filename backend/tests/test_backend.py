@@ -503,9 +503,9 @@ def test_reimagine_endpoint(tmp_path):
     store = Store(tmp_path, {})
     seen = {}
 
-    def fake_fal(render, photo, room, notes):
-        seen.update(render=render[:3], photo=photo[:3] if photo else None, room=room, notes=notes)
-        return _jpeg((10, 200, 30))
+    def fake_fal(render, photo, room, notes, same_room=True, furniture=None):
+        seen.update(render=render[:3], photo=photo[:3] if photo else None, room=room, notes=notes, same_room=same_room, furniture=furniture)
+        return {"image": _jpeg((10, 200, 30)), "unchanged": False}
 
     url = lambda b: "data:image/jpeg;base64," + base64.b64encode(b).decode()  # noqa: E731
     client = TestClient(create_app(store, lambda j, p: None, demo_match, None, None, fake_fal))
@@ -522,8 +522,38 @@ def test_reimagine_endpoint(tmp_path):
     assert client.get("/reimagined/../../etc.jpg").status_code == 404
     assert TestClient(create_app(store, lambda j, p: None, demo_match)).post("/reimagine", json={"render": url(_jpeg((1, 2, 3)))}).status_code == 501
     # the prompt keeps the real room from the photo and the design from the mock-up
-    p = prompt_for("Bedroom 2", True)
-    assert "first image is a real photograph" in p and "mock-up" in p and "bedroom 2" in p
+    p = prompt_for("Bedroom 2", True, furniture=["a teal velvet sofa, centre left, in the middle distance", "a magenta rug, centre, near"])
+    assert p.startswith("The first image is a 3D simulation of a bedroom 2") and "The second image is a real photograph of this bedroom 2" in p
+    assert "- a teal velvet sofa, centre left, in the middle distance\n" in p and "Use every piece of furniture" in p
+    assert "Keep each piece exactly where it is" in p and "Keep every colour exactly" in p
+    assert "another room in the same home" in prompt_for("Hall", True, photo_is_this_room=False)
+    assert "came back almost identical" in prompt_for("Hall", False, stronger=True)
+    assert "The furniture and objects in the image" not in prompt_for("Hall", False)   # no list, no heading
+    client.post("/reimagine", json={"render": url(_jpeg((5, 5, 5))), "roomName": "Lounge", "furniture": ["a white sofa, left, near"]})
+    assert seen["furniture"] == ["a white sofa, left, near"]
+    # a photo of a room from elsewhere is passed through as such
+    client.post("/reimagine", json={"render": url(_jpeg((5, 5, 5))), "photo": url(_jpeg((9, 9, 9))), "roomName": "Hall", "photoIsThisRoom": False})
+    assert seen["same_room"] is False and r.json()["unchanged"] is False
+
+
+def test_reimagine_spots_an_unchanged_result():
+    import io as _io
+    from PIL import Image, ImageDraw
+    from core.reimagine import looks_unchanged
+
+    def pic(shift=0, photo=False):
+        im = Image.new("RGB", (480, 320), (225, 222, 215)); d = ImageDraw.Draw(im)
+        d.rectangle([60 + shift, 180, 300 + shift, 280], fill=(130, 30, 140))      # a rug
+        d.rectangle([320, 120, 460, 230], fill=(240, 240, 240))                    # a sofa
+        if photo:   # a "photograph": texture and light falloff everywhere
+            import numpy as np
+            a = np.asarray(im, dtype=np.float32); h, w = a.shape[:2]
+            a = a * np.linspace(0.6, 1.1, w)[None, :, None] + np.random.default_rng(1).normal(0, 18, a.shape)
+            im = Image.fromarray(np.clip(a, 0, 255).astype("uint8"))
+        b = _io.BytesIO(); im.save(b, "JPEG"); return b.getvalue()
+    render = pic()
+    assert looks_unchanged(render, pic(shift=2))            # basically the same picture
+    assert not looks_unchanged(render, pic(photo=True))     # re-rendered
 
 
 def test_rooms_are_joined_at_shared_walls():

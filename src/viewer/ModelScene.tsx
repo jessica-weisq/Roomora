@@ -23,6 +23,11 @@ interface Props {
   handle: Ref<SceneHandle>
   /** A div laid over the canvas that room labels render into (keeps them outside the canvas's own DOM). */
   labelLayer: RefObject<HTMLDivElement | null>
+  /**
+   * Show the raw 3D scans from the build. Off by default: reconstructions from a handful of listing photos are
+   * torn and streaky, so the clean room model is the better picture unless someone asks for the scan.
+   */
+  showScans?: boolean
 }
 
 const WALL_T = 0.1
@@ -202,7 +207,7 @@ function Controls({ handle, plan, model }: { handle: Ref<SceneHandle>; plan: Pla
   )
 }
 
-export function ModelScene({ plan: rawPlan, modelUrl, selected, onSelect, handle, labelLayer }: Props) {
+export function ModelScene({ plan: rawPlan, modelUrl, selected, onSelect, handle, labelLayer, showScans = false }: Props) {
   const model = useRef<THREE.Group>(null)
   const dark = useTheme().resolved === 'dark'
   // rooms joined at shared walls; the model file's scans are placed on the plan as it was when they were built
@@ -219,7 +224,7 @@ export function ModelScene({ plan: rawPlan, modelUrl, selected, onSelect, handle
       {/* Centre the plan on the origin so orbiting feels natural */}
       <group ref={model} position={[-plan.width / 2, 0, -plan.depth / 2]}>
         <PlanModel plan={plan} selected={selected} onSelect={onSelect} labelLayer={labelLayer} />
-        {modelUrl && (
+        {modelUrl && showScans && (
           <group position={[-shift[0], 0, -shift[1]]}>
             <Suspense fallback={null}>
               <GltfModel url={modelUrl} plan={rawPlan} offset={[-plan.width / 2 - shift[0], -plan.depth / 2 - shift[1]]} selected={selected} onSelect={onSelect} />

@@ -27,6 +27,15 @@ export function Viewer() {
   const { plan, matches, assignments, photos, floorPlan, modelUrl, panoramas, reset, address } = useProject()
   const navigate = useNavigate()
   const [view, setView] = useState<'3d' | 'plan'>('3d')
+  // the raw 3D scans are rough, so they're off unless asked for (remembered on this device)
+  const [showScans, setShowScans] = useState(() => {
+    try { return localStorage.getItem('veduta-scans') === 'on' } catch { return false }
+  })
+  const toggleScans = () =>
+    setShowScans((v) => {
+      try { localStorage.setItem('veduta-scans', v ? 'off' : 'on') } catch { /* private mode */ }
+      return !v
+    })
   const [selected, setSelected] = useState<string | null>(plan?.rooms[0]?.id ?? null)
   const [toast, setToast] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
@@ -147,6 +156,12 @@ export function Viewer() {
                 </button>
               </div>
               <div className="tool-group">
+                {modelUrl && (
+                  <button type="button" className="btn btn-toggle" aria-pressed={showScans} disabled={view !== '3d'} onClick={toggleScans}
+                    title="The raw 3D reconstruction from your photos. It's rough: torn surfaces and streaks are normal.">
+                    {showScans ? 'Hide 3D scan' : 'Show 3D scan'}
+                  </button>
+                )}
                 <button type="button" className="btn btn-icon" aria-label="Zoom in" disabled={view !== '3d'} onClick={() => scene.current?.zoom(0.8)}>
                   <Icon name="plus" />
                 </button>
@@ -171,7 +186,7 @@ export function Viewer() {
             </div>
             {/* The 3D canvas stays mounted when hidden, so the camera keeps its position. */}
             <div className="stage" hidden={view !== '3d'}>
-              <ModelScene plan={plan} modelUrl={modelUrl} selected={selected} onSelect={setSelected} handle={scene} labelLayer={labelLayer} />
+              <ModelScene plan={plan} modelUrl={modelUrl} showScans={showScans} selected={selected} onSelect={setSelected} handle={scene} labelLayer={labelLayer} />
               <div ref={labelLayer} className="label-layer" />
             </div>
             {view === 'plan' && (

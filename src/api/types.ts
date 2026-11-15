@@ -129,6 +129,10 @@ export interface ReimagineRequest {
   photo: string | null
   roomName: string
   notes?: string
+  /** false when the photo is from another room in the home, sent as a guide to its style */
+  photoIsThisRoom?: boolean
+  /** every piece of furniture in view, with its colour and where it is: "a teal sofa, centre left, in the middle distance" */
+  furniture?: string[]
 }
 
 export interface ReimagineResponse {
@@ -136,6 +140,8 @@ export interface ReimagineResponse {
   imageUrl: string
   /** true from the mock backend, which can't make one and sends the render back */
   mock?: boolean
+  /** true when Fal sent back something almost the same as the render, even after a second try */
+  unchanged?: boolean
 }
 
 export const BUILD_STEPS: { label: string; detail: string }[] = [

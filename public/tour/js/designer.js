@@ -25,9 +25,97 @@
     return m || "Fal couldn’t reimagine the room just now. Try again.";
   };
 
+  // ---- what's in the picture, in words, for Fal ----
+  const LABEL = {
+    sofa: "sofa", armchair: "armchair", ottoman: "upholstered ottoman", coffeeRound: "round coffee table", coffee: "coffee table",
+    sideboard: "sideboard", tv: "TV wall unit with a television", shelving: "shelving unit", bookcase: "bookcase", table: "dining table",
+    roundTable: "round dining table", chair: "chair", island: "kitchen island", counter: "run of kitchen units with a worktop",
+    bed: "double bed", nightstand: "bedside table", bench: "bench", dresser: "chest of drawers", wardrobe: "built-in wardrobe",
+    desk: "desk with a chair", console: "console table", bath: "bath", vanity: "basin on a vanity unit", wc: "WC", shower: "walk-in shower with a glass screen",
+    floorLamp: "floor lamp", roundShelf: "round side table", plant: "potted plant", rug: "rug", lounger: "sun lounger", planter: "planter",
+    hottub: "hot tub", art: "framed picture on the wall",
+  };
+  const COLOURS = [
+    ["white", "#f5f5f2"], ["ivory", "#efe9df"], ["cream", "#e8dcc3"], ["beige", "#d8c8ad"], ["oatmeal", "#cdbfa9"], ["taupe", "#b7aa94"],
+    ["light grey", "#cfcfcf"], ["grey", "#9a9a9a"], ["charcoal", "#3b3a38"], ["black", "#151515"], ["tan", "#b58a5a"], ["brown", "#6b4a32"],
+    ["walnut brown", "#5a4a3c"], ["terracotta", "#b5603f"], ["rust", "#a0522d"], ["red", "#b22222"], ["burgundy", "#7a2b24"],
+    ["pink", "#e7a6b3"], ["blush pink", "#d9a79a"], ["magenta", "#b0207a"], ["purple", "#6a3d8f"], ["lavender", "#b7a6d6"],
+    ["navy", "#2c3550"], ["blue", "#2f5bea"], ["sky blue", "#8cbbe8"], ["teal", "#1f6b78"], ["turquoise", "#2ab3b0"],
+    ["green", "#3d7a46"], ["sage green", "#a9b59c"], ["forest green", "#2f5546"], ["olive", "#7a7a3a"], ["mustard", "#c9a24a"],
+    ["yellow", "#e6c84a"], ["orange", "#e07b2a"], ["gold", "#c49a4c"], ["royal blue", "#1d4f86"],
+    ["mocha brown", "#8a7560"], ["chocolate brown", "#4a3426"], ["camel", "#b98d5c"], ["sand", "#d9c7a3"], ["stone grey", "#a8a096"],
+  ].map(([n, h]) => [n, [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16))]);
+  // what each piece looks like when it has no colour of its own (the 3D walk's defaults, furnish2.js)
+  const DEFAULT_COLOUR = { sofa: "#e6dfd2", armchair: "#d7ccbb", ottoman: "#1f6b78", sideboard: "#1d4f86", rug: "#e8e2d7", bed: "#b7aa94", nightstand: "#15100d" };
+  const FINISH = {
+    sofa: "on dark oak legs", armchair: "with dark oak legs", sideboard: "with brass handles", nightstand: "in black gloss with brass handles",
+    chair: "in dark oak", coffeeRound: "in black gloss with a brass base", shelving: "in oak and dark wood", bookcase: "in dark wood, filled with books",
+    floorLamp: "in brass with a white shade", tv: "in dark oak", console: "in dark oak with brass details", dresser: "in dark oak with brass handles",
+    desk: "in dark oak", wardrobe: "in off-white lacquer with brass handles", counter: "in pale grey with a white marble worktop",
+    island: "in charcoal lacquer with a white marble top and brass stools", bench: "upholstered in beige on dark oak legs",
+    roundShelf: "in dark oak and marble", bath: "in white enamel with a travertine panel", vanity: "in dark oak with a travertine top",
+    wc: "in white ceramic", shower: "with a white tray", bed: "with white bedding",
+  };
+  const colourName = (hex) => {
+    if (typeof hex !== "string" || !/^#[0-9a-f]{6}$/i.test(hex)) return "";
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    let best = "", d = Infinity;
+    for (const [n, k] of COLOURS) {   // weighted RGB distance: close enough to how colours are named
+      const rm = (c[0] + k[0]) / 2, dr = c[0] - k[0], dg = c[1] - k[1], db = c[2] - k[2];
+      const e = (2 + rm / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rm) / 256) * db * db;
+      if (e < d) { d = e; best = n; }
+    }
+    return best;
+  };
+  // Each piece of furniture you can see from the camera: "a teal sofa, centre left, in the middle distance".
+  function furnitureInView(P, camera, scene, furniture, THREE) {
+    if (!THREE || !P.furnishing) return [];
+    const s = P.model.metresPerPx, ray = new THREE.Raycaster(), out = [];
+    const isFurniture = (o) => { for (let x = o; x; x = x.parent) if (x === furniture) return true; return false; };
+    const camPos = camera.getWorldPosition(new THREE.Vector3());
+    for (const it of P.furnishing) {
+      const label = LABEL[it.type];
+      if (!label) continue;
+      // several points on the piece (its middle and round its edges, low and higher up): it's in the picture if
+      // any of them is in frame with no wall in the way, so pieces cut off by the frame's edge count too
+      const h = it.type === "art" ? (it.elev || 1.5) : it.type === "rug" ? 0.02 : (it.elev || 0) + 0.4;
+      const r = it.type === "art" ? 0.25 : it.type === "rug" ? Math.min(1.2, ((it.w || 2) + (it.d || 1.6)) / 4) : 0.4;
+      const pts = [[0, 0]].concat([0, 1, 2, 3, 4, 5, 6, 7].map((k) => [Math.cos((k * Math.PI) / 4) * r, Math.sin((k * Math.PI) / 4) * r]));
+      const seen = [];
+      for (const [dx, dz] of pts) for (const hh of it.type === "rug" || it.type === "art" ? [h] : [h - 0.15, h + 0.3]) {
+        const p = new THREE.Vector3(it.x * s + dx, Math.max(0.02, hh), it.y * s + dz), ndc = p.clone().project(camera);
+        if (ndc.z > 1 || ndc.z < -1 || Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1) continue;
+        const dist = camPos.distanceTo(p);
+        ray.set(camPos, p.clone().sub(camPos).normalize()); ray.far = dist;
+        if (ray.intersectObjects(scene.children, true).some((x) => x.object.visible && !isFurniture(x.object) && x.distance < dist - 0.3 && x.object.type !== "Sprite")) continue;
+        seen.push({ x: ndc.x, dist });
+      }
+      if (!seen.length) continue;   // out of frame, or behind a wall
+      const ndc = { x: seen.reduce((a, q) => a + q.x, 0) / seen.length }, dist = seen.reduce((a, q) => a + q.dist, 0) / seen.length;
+      const col = colourName(it.color || (it.type === "chair" ? it.chairColor : null) || DEFAULT_COLOUR[it.type]);
+      let what = label;
+      if (it.type === "table" || it.type === "roundTable") {
+        const n = it.type === "table" ? (it.chairs ?? 3) * 2 : (it.chairs ?? 4);
+        what = `${label}${n ? ` with ${n} ${colourName(it.chairColor) ? colourName(it.chairColor) + " " : ""}chairs` : ""}`;
+      } else if (col) what = `${col} ${label}`;
+      if (FINISH[it.type]) what += ` ${FINISH[it.type]}`;
+      // cushions in their own colours
+      const list = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+      const cush = [...list(it.cushion), ...list(it.cushions), ...list(it.accent)].map(colourName).filter(Boolean);
+      const names = [...new Set(cush)];
+      if (names.length === 1 && cush.length === 1) what += `, with a ${names[0]} cushion`;
+      else if (names.length) what += `, with ${names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0]} cushions`;
+      const x = ndc.x, where = x < -0.45 ? "on the left" : x < -0.15 ? "centre left" : x <= 0.15 ? "in the centre" : x <= 0.45 ? "centre right" : "on the right";
+      const depth = dist < 2.2 ? "in the foreground" : dist < 4.5 ? "in the middle distance" : "at the back";
+      out.push({ text: `${/^[aeiou]/i.test(what) ? "an" : "a"} ${what}, ${where}, ${depth}`, d: dist });
+    }
+    return out.sort((a, b) => a.d - b.d).slice(0, 30).map((o) => o.text);
+  }
+  T.describeFurnitureInView = (camera) => { const w = T.__w3; return w ? furnitureInView(T.P, camera || w.camera, w.scene, w.furniture, w.THREE) : []; };
+
   T.Designer = {
     attach(o) {
-      const { root, renderer, scene, camera, canvas, P, alive, roomAt } = o;
+      const { root, renderer, scene, camera, canvas, P, alive, roomAt, THREE, furniture } = o;
       const style = root.querySelector(".w3-style");
       if (!style) return;
       const before = style.querySelector(".w3-deco");
@@ -70,7 +158,7 @@
           <div class="rm-grid">
             <figure class="rm-fig rm-photo"><img alt=""><figcaption>The room now (your photo)</figcaption></figure>
             <figure class="rm-fig rm-design"><img alt=""><figcaption>Your design in the 3D walk</figcaption></figure>
-            <figure class="rm-fig rm-result"><div class="rm-wait"><span class="rm-spin" aria-hidden="true"></span><p class="rm-status" aria-live="polite"></p></div><img alt="" hidden><figcaption>Reimagined with Fal: an AI impression, not a photo</figcaption></figure>
+            <figure class="rm-fig rm-result"><div class="rm-wait"><span class="rm-spin" aria-hidden="true"></span><p class="rm-status" aria-live="polite"></p></div><img alt="" hidden><p class="rm-note" hidden></p><figcaption>Reimagined with Fal: an AI impression, not a photo</figcaption></figure>
           </div>
           <div class="rm-foot">
             <label class="rm-notes-l">Anything to tell Fal? <input type="text" class="rm-notes" maxlength="300" placeholder="For example: evening light, linen curtains"></label>
@@ -97,7 +185,7 @@
       async function generate() {
         if (busy || !last) return;
         busy = true;
-        $(".rm-again").disabled = true; $(".rm-save").hidden = true;
+        $(".rm-again").disabled = true; $(".rm-save").hidden = true; $(".rm-note").hidden = true;
         $(".rm-result img").hidden = true; $(".rm-wait").hidden = false; $(".rm-spin").hidden = false;
         $(".rm-status").textContent = `Fal is reimagining the ${last.roomName.toLowerCase()}. This usually takes 10 to 40 seconds…`;
         try {
@@ -106,7 +194,10 @@
           const img = $(".rm-result img");
           await new Promise((ok, bad) => { img.onload = ok; img.onerror = () => bad(new Error("The reimagined image couldn’t be loaded.")); img.src = res.imageUrl; });
           img.hidden = false; $(".rm-wait").hidden = true;
-          if (res.mock) { $(".rm-wait").hidden = false; $(".rm-spin").hidden = true; $(".rm-status").textContent = "This is Veduta’s mock backend, which can’t call Fal, so this is your design as rendered. Connect the real backend with FAL_KEY set to reimagine it."; }
+          // a note under the picture when it isn't really a reimagining
+          const note = res.mock ? "This is Veduta’s mock backend, which can’t call Fal, so this is your design as rendered. Connect the real backend with FAL_KEY set to reimagine it."
+            : res.unchanged ? "Fal sent back almost exactly your design, even after a second try. Try again, perhaps with something to tell it below, or set a different model on the backend (FAL_REIMAGINE_MODEL)." : "";
+          $(".rm-note").textContent = note; $(".rm-note").hidden = !note;
           const save = $(".rm-save"); save.href = res.imageUrl; save.hidden = false;
         } catch (e) {
           $(".rm-spin").hidden = true;
@@ -118,9 +209,28 @@
       $(".rm-again").addEventListener("click", generate);
       $(".rm-notes").addEventListener("keydown", (e) => { if (e.key === "Enter") generate(); });
 
+      // the room you're looking at (the middle of the view), which isn't always the one you're standing in:
+      // from a hall, looking through a doorway into the living room, it's the living room
+      const roomInView = () => {
+        if (!THREE || !P.model) return null;
+        const ray = new THREE.Raycaster();
+        ray.setFromCamera(new THREE.Vector2(0, -0.15), camera);
+        const hit = ray.intersectObjects(scene.children, true).find((h) => h.object.visible && h.distance > 0.3 && h.object.type !== "Sprite");
+        if (!hit) return null;
+        const s = P.model.metresPerPx;
+        return T.roomAtPoint(P, hit.point.x / s, hit.point.z / s);
+      };
+      const firstPhoto = async (room) => {
+        for (let i = 0; room && i < room.media.length; i++) {
+          if (room.media[i].type !== "photo") continue;
+          try { const r = await T.mediaImage(P, room, i); if (!r.placeholder) return toJpeg(r.image); } catch (e) { /* try the next */ }
+        }
+        return null;
+      };
+
       reimagineBtn.addEventListener("click", async () => {
         if (busy) return;
-        const room = roomAt();
+        const room = roomInView() || roomAt();
         if (!room) { reimagineBtn.textContent = "Stand in a room first"; setTimeout(() => (reimagineBtn.textContent = "Reimagine with Fal"), 2200); return; }
         // tidy up first, so no selection outlines or panels end up in the picture
         closePanels();
@@ -128,18 +238,16 @@
         if (!alive()) return;
         renderer.render(scene, camera);           // draw and read back in the same task
         const render = toJpeg(renderer.domElement);
-        // the room's own photo: its first ordinary photo that loads
-        let photo = null;
-        for (let i = 0; i < room.media.length && !photo; i++) {
-          if (room.media[i].type !== "photo") continue;
-          try {
-            const r = await T.mediaImage(P, room, i);
-            if (!r.placeholder) photo = toJpeg(r.image);
-          } catch (e) { /* a photo from another site can't be read back: try the next */ }
-        }
-        last = { render, photo, roomName: room.name };
+        // the room's own photo; failing that, one from elsewhere in the home, as a guide to its style
+        let photo = await firstPhoto(room), photoIsThisRoom = true, photoRoom = room;
+        if (!photo) for (const other of P.rooms) { if (other === room) continue; photo = await firstPhoto(other); if (photo) { photoIsThisRoom = false; photoRoom = other; break; } }
+        // every piece you can see, its colour and where it is, so Fal keeps them all, in place, in colour
+        const pieces = furnitureInView(P, camera, scene, furniture && furniture(), THREE);
+        last = { render, photo, roomName: room.name, photoIsThisRoom, furniture: pieces };
         $(".rm-title").textContent = `${room.name}, reimagined with Fal`;
         $(".rm-photo").hidden = !photo;
+        $(".rm-photo figcaption").textContent = photoIsThisRoom ? "The room now (your photo)" : `Style guide: your photo of the ${photoRoom.name.toLowerCase()}`;
+        $(".rm-grid").classList.toggle("no-photo", !photo);
         if (photo) $(".rm-photo img").src = photo;
         $(".rm-design img").src = render;
         sheet.hidden = false;

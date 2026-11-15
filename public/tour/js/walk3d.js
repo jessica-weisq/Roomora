@@ -745,7 +745,7 @@
       });
       // stand at a spot on the plan (pixels) facing a direction (degrees, 0 = up the plan)
       let glide = null;
-      T.__w3 = { renderer, scene, camera, THREE };
+      T.__w3 = { renderer, scene, camera, THREE, get furniture() { return F.group; } };
       // the real view out of the windows from Google Street View, when there's a key; the drawn scenery otherwise
       const outlook = T.Outlook ? T.Outlook.attach({ THREE, scene, root, P, alive, drawn: [sky, ground, canopy, cityMesh] }) : null;
       if (T.Decorate) T.Decorate.attach({ root, THREE, scene, camera, renderer, canvas, wallMesh, M, G, GW, GH, cs, H, s, P, alive });
@@ -753,7 +753,7 @@
         root, THREE, scene, camera, renderer, canvas, wallMesh, F, P, s, cs, GW, GH, aniso: anis, alive, visible: () => visible(),
         cellAt, inPoly, unstick, roomAt: () => roomAt(), view: () => ({ x: pos.x, z: pos.z, yaw }),
       }) || gate;
-      if (T.Designer && F.group) T.Designer.attach({ root, renderer, scene, camera, canvas, P, alive, roomAt: () => roomAt() });
+      if (T.Designer && F.group) T.Designer.attach({ root, renderer, scene, camera, canvas, P, alive, THREE, furniture: () => F.group, roomAt: () => roomAt() });
       T.walkTo = (x, y, deg = 0, pitchDeg = -4, smooth = false) => {
         const to = { x: x * s, z: y * s, yaw: (deg * Math.PI) / 180, pitch: (pitchDeg * Math.PI) / 180 };
         // Viewpoints are worked out before the room is furnished, so one can land in furniture or right behind

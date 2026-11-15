@@ -181,6 +181,8 @@ button, input, select { font: inherit; }
 .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
 .btn-primary:disabled:hover { background: var(--accent); }
 .btn-icon { width: 44px; padding: 0; }
+.btn-toggle { padding: 0 14px; font-size: 14px; white-space: nowrap; }
+.btn-toggle[aria-pressed='true'] { background: var(--accent-tint); border-color: var(--accent); }
 .btn.selected { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 
 .actions {
