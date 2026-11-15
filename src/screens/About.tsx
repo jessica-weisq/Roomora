@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { Link } from 'react-router-dom'
 import { Header } from '../components/Header'
 import teamPhoto from '../assets/team-photo.jpg'
@@ -23,6 +24,12 @@ const STEPS = [
     title: 'Walk through it',
     body: 'Walk from room to room, furnished in the colours from your photos. Open any photo in 3D, look out of the windows, step out to the street, or redesign a room and let AI show how it would really look.',
   },
+]
+
+const TEAM = [
+  { name: 'Neev Dhall', linkedin: 'https://www.linkedin.com/in/neev-dhall/' },
+  { name: 'William Robinson', linkedin: 'https://www.linkedin.com/in/williamh-robinson/' },
+  { name: 'Jessica Wei', linkedin: 'https://www.linkedin.com/in/jessica-w-a74a79179/' },
 ]
 
 const CREDITS = [
@@ -93,7 +100,18 @@ export function About() {
 
         <section aria-labelledby="team">
           <h2 id="team">Who made it</h2>
-          <p>Originally built by Neev Dhall, William Robinson and Jessica Wei at Imperial AI Hack 2026.</p>
+          <p>
+            Originally built by{' '}
+            {TEAM.map((m, i) => (
+              <Fragment key={m.name}>
+                {i > 0 && (i === TEAM.length - 1 ? ' and ' : ', ')}
+                <a href={m.linkedin} target="_blank" rel="noreferrer" title={`${m.name} on LinkedIn`}>
+                  {m.name}
+                </a>
+              </Fragment>
+            ))}{' '}
+            at Imperial AI Hack 2026.
+          </p>
           <p>
             The name comes from the Italian <em>veduta</em>, &ldquo;view&rdquo;: the detailed, true-to-life paintings of real
             places made by artists like Canaletto.
@@ -102,8 +120,8 @@ export function About() {
             <img
               src={teamPhoto}
               alt="The Veduta team at Imperial AI Hack 2026"
-              width={1500}
-              height={2000}
+              width={1240}
+              height={930}
               loading="lazy"
             />
           </figure>
