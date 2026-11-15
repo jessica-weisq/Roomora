@@ -226,24 +226,33 @@ def match_photos_gemini(plan_bytes: bytes, plan_mime: str, photos: list[tuple[st
         out.append(types.Part.from_text(text=INSTRUCTIONS_JSON))
         return out
 
-    def config(per_part_resolution: bool) -> Any:
+    def config(per_part_resolution: bool, thinking: bool = True) -> Any:
         return types.GenerateContentConfig(
             response_mime_type="application/json",
             response_json_schema=_gemini_schema(),
             temperature=0,
             max_output_tokens=16000,
             # Reading a plan and sorting photos doesn't need deep reasoning.
-            thinking_config=types.ThinkingConfig(thinking_level=os.environ.get("GEMINI_THINKING", "MINIMAL").upper()),
+            thinking_config=types.ThinkingConfig(thinking_level=os.environ.get("GEMINI_THINKING", "LOW").upper()) if thinking else None,
             # Fallback when the API won't take per-image resolution: everything at medium.
             media_resolution=None if per_part_resolution else "MEDIA_RESOLUTION_MEDIUM",
         )
 
     def call(per_part_resolution: bool) -> Any:
-        return client.models.generate_content(
-            model=os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
-            contents=build_parts(per_part_resolution),
-            config=config(per_part_resolution),
-        )
+        try:
+            return client.models.generate_content(
+                model=os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
+                contents=build_parts(per_part_resolution),
+                config=config(per_part_resolution),
+            )
+        except Exception as e:  # a model that doesn't take this thinking level: use its default instead
+            if "400" in str(e) and "thinking" in str(e).lower():
+                return client.models.generate_content(
+                    model=os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL),
+                    contents=build_parts(per_part_resolution),
+                    config=config(per_part_resolution, thinking=False),
+                )
+            raise
 
     started = time.monotonic()
     try:

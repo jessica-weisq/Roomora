@@ -185,7 +185,7 @@ def test_gemini_request_shape():
     mimes = [p.inline_data.mime_type for p in sent["contents"] if p.inline_data]
     assert mimes == ["application/pdf", "image/jpeg", "image/jpeg"]
     assert sent["config"].response_mime_type == "application/json"
-    assert sent["config"].thinking_config.thinking_level.value == "MINIMAL"
+    assert sent["config"].thinking_config.thinking_level.value == "LOW"
     res = [p.media_resolution.level.value for p in sent["contents"] if p.inline_data]
     assert res == ["MEDIA_RESOLUTION_HIGH", "MEDIA_RESOLUTION_LOW", "MEDIA_RESOLUTION_LOW"]
     room_name = sent["config"].response_json_schema["properties"]["photos"]["items"]["properties"]["room_name"]
