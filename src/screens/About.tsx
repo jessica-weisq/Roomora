@@ -56,7 +56,7 @@ export function About() {
         </p>
 
         <section aria-labelledby="why">
-          <h2 id="why">Why</h2>
+          <h2 id="why">Why?</h2>
           <p>
             Listing photos show what a room looks like but not how the home fits together. Floor plans show the layout but
             not what it feels like to be there. Veduta puts the two together, so buyers, renters and anyone planning a move
