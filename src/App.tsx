@@ -6,6 +6,7 @@ import { Upload } from './screens/Upload'
 import { Review } from './screens/Review'
 import { Build } from './screens/Build'
 import { About } from './screens/About'
+import { Demo } from './screens/Demo'
 
 // three.js is large, so the viewer loads only when it's needed.
 const Viewer = lazy(() => import('./screens/Viewer').then((m) => ({ default: m.Viewer })))
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="/" element={<Upload />} />
           <Route path="/review" element={<Review />} />
           <Route path="/build" element={<Build />} />
+          <Route path="/demo" element={<Demo />} />
           <Route path="/about" element={<About />} />
           <Route
             path="/view"

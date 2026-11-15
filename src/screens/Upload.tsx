@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import type { DragEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Header } from '../components/Header'
 import { Icon } from '../components/Icon'
 import { PhotoThumb } from '../components/PhotoThumb'
@@ -75,7 +75,7 @@ export function Upload() {
         <h1 className="page-title">Upload your floor plan and photos</h1>
         <p className="lede">
           The floor plan gives us the layout. Your photos tell us what each room looks like. Want to see the result first?{' '}
-          <a href="/tour/index.html">Walk through a sample flat</a>.
+          <Link to="/demo">Walk through a sample flat</Link>.
         </p>
 
         <div className="row">

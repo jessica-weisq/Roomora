@@ -111,9 +111,11 @@ button, input, select { font: inherit; }
 .brand img { display: block; height: 44px; width: auto; }
 .brand picture { display: block; }
 .header-end { display: flex; flex-wrap: wrap; align-items: center; gap: 32px; }
-/* A divider sets About apart from the progress steps */
-.header-link { color: var(--ink-2); text-decoration: none; font-size: 14px; font-weight: 500; padding-left: 32px; border-left: 1px solid var(--line-strong); line-height: 28px; }
-.header-link:first-child { padding-left: 0; border-left: 0; }
+/* A divider sets Demo and About apart from the progress steps */
+.header-nav { display: flex; align-items: center; gap: 24px; padding-left: 32px; border-left: 1px solid var(--line-strong); }
+.header-nav:first-child { padding-left: 0; border-left: 0; }
+.header-link { color: var(--ink-2); text-decoration: none; font-size: 14px; font-weight: 500; line-height: 28px; }
+.header-link.active { color: var(--accent); }
 
 /* Theme menu (top right) */
 .theme-menu { position: relative; margin-left: -12px; }
@@ -329,3 +331,12 @@ button, input, select { font: inherit; }
 .tour-bar h2 { font-size: 18px; margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tour-frame { flex: 1; width: 100%; border: 0; display: block; background: #15110e; }
 @media (max-width: 760px) { .tour-help { display: none; } }
+
+/* Demo: the sample flat's walk-through, filling the rest of the screen */
+.demo-shell { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+.demo { flex: 1; min-height: 0; width: 100%; max-width: 1200px; margin: 0 auto; padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 16px; }
+.demo-intro { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.demo-title { font-size: 24px; line-height: 1.2; margin: 0 0 4px; }
+.demo-text { margin: 0; color: var(--muted); max-width: 640px; }
+.demo-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.demo-frame { flex: 1; min-height: 420px; width: 100%; border: 1px solid var(--line); border-radius: var(--radius); background: #1b1f27; }

@@ -1,6 +1,6 @@
 import { Fragment } from 'react'
 import type { ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, NavLink } from 'react-router-dom'
 import { Icon } from './Icon'
 import { ThemeMenu } from './ThemeMenu'
 import { useTheme } from '../state/theme'
@@ -38,9 +38,14 @@ export function Header({ step, right }: { step?: number; right?: ReactNode }) {
         ) : (
           right
         )}
-          <Link to="/about" className="header-link">
-            About
-          </Link>
+          <nav className="header-nav" aria-label="Site">
+            <NavLink to="/demo" className="header-link">
+              Demo
+            </NavLink>
+            <NavLink to="/about" className="header-link">
+              About
+            </NavLink>
+          </nav>
           <ThemeMenu />
         </div>
       </div>

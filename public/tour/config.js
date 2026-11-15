@@ -8,3 +8,9 @@ window.TOUR_CONFIG = {
   MAPS_API_KEY: "",
   API_URL: "",
 };
+// On the Veduta website's Demo page the tour sits in a frame on the same site: take the Maps key and the
+// backend's address from the page around it, so the sample flat gets Street View and Reimagine with Fal too.
+try {
+  const site = window.parent !== window && window.parent.VEDUTA_TOUR_CONFIG;
+  if (site) for (const [k, v] of Object.entries(site)) if (v) window.TOUR_CONFIG[k] = v;
+} catch (e) { /* opened on its own, or framed by another site */ }
