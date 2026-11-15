@@ -1,15 +1,16 @@
 :root {
   --ground: #f5f6f8;
   --surface: #ffffff;
-  --ink: #111827;
+  --ink: #1f2330;
   --ink-2: #374151;
   --muted: #4b5563;
   --line: #e5e7eb;
   --line-strong: #d1d5db;
-  --accent: #2f5bea;
-  --accent-hover: #1e40c0;
-  --accent-tint: #e8eefd;
-  --accent-fill: #dce5fd;
+  --accent: #4a6f96;        /* logo blue #547ba2, a shade darker for contrast */
+  --accent-hover: #3a5878;
+  --accent-tint: #e9eef4;
+  --accent-fill: #d5dfea;
+  --brand-navy: #393f4f;    /* logo wordmark */
   --warn: #b45309;
   --warn-ink: #7c2d12;
   --warn-tint: #fef3e2;
@@ -42,11 +43,11 @@ button, input, select { font: inherit; }
   max-width: 1200px; margin: 0 auto; padding: 14px 24px;
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;
 }
-.brand { display: flex; align-items: center; gap: 10px; color: var(--accent); text-decoration: none; }
+.brand { display: flex; align-items: center; text-decoration: none; }
+.brand img { display: block; height: 44px; width: auto; }
 .header-end { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; }
 .header-link { color: var(--ink-2); text-decoration: none; font-size: 14px; font-weight: 500; }
 .header-link:hover { color: var(--accent); text-decoration: underline; }
-.brand span { font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 18px; color: var(--ink); }
 .stepper { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 14px; }
 .stepper-sep { width: 24px; height: 1px; background: var(--line-strong); }
 .step { display: flex; align-items: center; gap: 8px; color: var(--muted); }

@@ -2,6 +2,7 @@ import { Fragment } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Icon } from './Icon'
+import logo from '../assets/logo.png'
 
 const STEPS = ['Upload', 'Review', 'Build', 'View']
 
@@ -10,8 +11,7 @@ export function Header({ step, right }: { step?: number; right?: ReactNode }) {
     <header className="header">
       <div className="header-inner">
         <Link to="/" className="brand" aria-label="Roomora home">
-          <Icon name="cube" size={26} />
-          <span>Roomora</span>
+          <img src={logo} alt="Roomora" width={118} height={44} />
         </Link>
         <div className="header-end">
         {step !== undefined ? (

@@ -47,7 +47,7 @@ function wallsFor(r: Room, plan: Plan) {
 }
 
 function RoomMesh({ room, plan, selected, onSelect, labelLayer }: { room: Room; plan: Plan; selected: boolean; onSelect: (id: string) => void; labelLayer: RefObject<HTMLDivElement | null> }) {
-  const floorColor = selected ? '#9DB5F7' : isWet(room) ? '#D3DAE3' : '#DCCDB8'
+  const floorColor = selected ? '#A9BED6' : isWet(room) ? '#D3DAE3' : '#DCCDB8'
   const walls = useMemo(() => wallsFor(room, plan), [room, plan])
   return (
     <group>
@@ -90,7 +90,7 @@ function PlanModel({ plan, selected, onSelect, labelLayer }: { plan: Plan; selec
   )
 }
 
-const HIGHLIGHT = new THREE.Color('#3d6bff')
+const HIGHLIGHT = new THREE.Color('#547ba2')
 
 function GltfModel({ url, selected, onSelect }: { url: string; selected: string | null; onSelect: (id: string) => void }) {
   const { scene } = useGLTF(url)
