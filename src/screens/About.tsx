@@ -37,7 +37,7 @@ const CREDITS = [
   { name: 'Gemini', by: 'Google', note: 'reading floor plans, matching photos and furnishing rooms', href: 'https://ai.google.dev' },
   { name: 'HunyuanWorld via fal', by: 'Tencent / fal.ai', note: '360° room impressions', href: 'https://fal.ai' },
   { name: 'Nano Banana via fal', by: 'Google / fal.ai', note: 'Reimagine: photo-real redesigns', href: 'https://fal.ai' },
-  { name: 'Depth Anything', by: 'HKU and TikTok', note: '3D photos', href: 'https://github.com/LiheYoung/Depth-Anything' },
+  { name: 'MoGe-2 via fal', by: 'Microsoft / fal.ai', note: '3D photos (Depth Anything as backup)', href: 'https://github.com/microsoft/MoGe' },
   { name: 'Google Maps Platform', by: 'Google', note: 'Street View and the view from the windows', href: 'https://developers.google.com/maps' },
   { name: 'three.js', by: 'three.js authors', note: '3D viewer and walk-through', href: 'https://threejs.org' },
   { name: 'Marzipano', by: 'Google', note: '360° viewer', href: 'https://www.marzipano.net' },
