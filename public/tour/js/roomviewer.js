@@ -522,7 +522,7 @@
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         renderer.setClearColor("#161b1d");
         wrap.appendChild(renderer.domElement);
-        const hint = el("p", "rv-fused-hint", "Built in 3D from two photos of this room. Click and drag to look around; walk with W A S D or the arrow keys, or double-click the floor. Plain surfaces fill anything neither photo shows.");
+        const hint = el("p", "rv-fused-hint", "Built in 3D from two photos of this room. Drag to look around and step a little with W A S D or the arrow keys; the buttons switch between the photos.");
         wrap.appendChild(hint);
         const spots = el("div", "rv-fused-spots");
         F.parts.forEach((pt, k) => {
@@ -642,6 +642,18 @@
           }
           return true;
         };
+        // Stay where the photos can be seen: two photos only cover part of the room, and looking or stepping far
+        // from where they were taken shows gaps and torn edges. So you can step a little way from a photo's spot
+        // and turn a little either side of the way it was taken; the buttons switch between the photos.
+        const REACH = 0.6, YAW_LIM = 0.45, PITCH_LIM = 0.25, FOV_MAX = 75;
+        const angDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+        const toPhoto = (x, z) => Math.min(...parts.map((p) => Math.hypot(x - p.cam.x, z - p.cam.z)));
+        const clampView = () => {
+          let near = null;
+          for (const p of parts) { const d = angDiff(yaw, p.yaw0); if (!near || Math.abs(d) < Math.abs(near.d)) near = { d, p }; }
+          if (near && Math.abs(near.d) > YAW_LIM) yaw = near.p.yaw0 + Math.sign(near.d) * YAW_LIM;
+          pitch = Math.max(-PITCH_LIM, Math.min(PITCH_LIM, pitch));
+        };
         const camH = F.parts[0].camH;
         const pos = { x: F.parts[0].t[0], z: F.parts[0].t[1] };
         let yaw = F.parts[0].yaw, pitch = 0, target = null, w = 1, h = 1, raf = 0;
@@ -650,7 +662,7 @@
         const hideHint = () => hint.classList.add("is-gone");
         setTimeout(hideHint, 10000);
         let lookTotal = 0;
-        const looker = T.attachLook(canvas, (dy, dp) => { yaw += dy; pitch = Math.max(-1.1, Math.min(1.1, pitch + dp)); }, { onMove: (m) => { lookTotal += m; if (lookTotal > 400) hideHint(); } });
+        const looker = T.attachLook(canvas, (dy, dp) => { yaw += dy; pitch += dp; clampView(); }, { onMove: (m) => { lookTotal += m; if (lookTotal > 400) hideHint(); } });
         canvas.addEventListener("pointerdown", () => wrap.focus({ preventScroll: true }));
         const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
         canvas.addEventListener("dblclick", (e) => {
@@ -660,7 +672,7 @@
           const hit = ray.intersectObjects([...parts.map((p) => p.mesh), floor])[0];
           if (hit) { target = { x: hit.point.x, z: hit.point.z }; hideHint(); }
         });
-        wrap.addEventListener("wheel", (e) => { e.preventDefault(); camera.fov = Math.max(40, Math.min(90, camera.fov + e.deltaY * 0.03)); camera.updateProjectionMatrix(); }, { passive: false });
+        wrap.addEventListener("wheel", (e) => { e.preventDefault(); camera.fov = Math.max(40, Math.min(FOV_MAX, camera.fov + e.deltaY * 0.03)); camera.updateProjectionMatrix(); }, { passive: false });
         const onKey = (e) => {
           if (!alive() || wrap.closest("[hidden]") || /^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName)) return;
           const k = e.key.toLowerCase();
@@ -668,15 +680,23 @@
           if (e.type === "keydown") { keys.add(k); target = null; hideHint(); if (k.startsWith("arrow")) e.preventDefault(); } else keys.delete(k);
         };
         window.addEventListener("keydown", onKey); window.addEventListener("keyup", onKey);
+        // a step is allowed onto free floor near a photo's spot (or back towards one, if you're further out)
+        const canStand = (x, z) => freeAt(x, z) && (toPhoto(x, z) <= REACH || toPhoto(x, z) < toPhoto(pos.x, pos.z));
         const move = (dx, dz) => {
-          if (freeAt(pos.x + dx, pos.z + dz)) { pos.x += dx; pos.z += dz; return true; }
+          if (canStand(pos.x + dx, pos.z + dz)) { pos.x += dx; pos.z += dz; return true; }
           let ok = false;
-          if (freeAt(pos.x + dx, pos.z)) { pos.x += dx; ok = true; }
-          if (freeAt(pos.x, pos.z + dz)) { pos.z += dz; ok = true; }
+          if (canStand(pos.x + dx, pos.z)) { pos.x += dx; ok = true; }
+          if (canStand(pos.x, pos.z + dz)) { pos.z += dz; ok = true; }
           return ok;
         };
 
-        T.photoRoomTo = (x, z, deg, pitchDeg = 0) => { pos.x = x; pos.z = z; yaw = (deg * Math.PI) / 180; pitch = (pitchDeg * Math.PI) / 180; target = null; };
+        T.photoRoomTo = (x, z, deg, pitchDeg = 0) => {
+          if (toPhoto(x, z) > REACH) {   // too far from both photos to see them properly: go to the nearest one's spot
+            const p = parts.reduce((a, b) => (Math.hypot(x - a.cam.x, z - a.cam.z) <= Math.hypot(x - b.cam.x, z - b.cam.z) ? a : b));
+            x = p.cam.x; z = p.cam.z;
+          }
+          pos.x = x; pos.z = z; yaw = (deg * Math.PI) / 180; pitch = (pitchDeg * Math.PI) / 180; target = null; clampView();
+        };
         let last = performance.now();
         function frame(now) {
           if (!alive()) return;
@@ -691,6 +711,7 @@
           yaw += looker.edge() * 1.5 * dt;
           if (keys.has("arrowleft") || keys.has("q")) yaw += 1.6 * dt;
           if (keys.has("arrowright") || keys.has("e")) yaw -= 1.6 * dt;
+          clampView();
           const sp = 1.5 * (keys.has("shift") ? 2 : 1) * dt;
           if (fwd || side) {
             const l = Math.max(1, Math.hypot(fwd, side));
