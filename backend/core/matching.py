@@ -39,6 +39,11 @@ TOOL = {
                 "properties": {
                     "width_m": {"type": "number", "description": "Overall width of the plan in metres"},
                     "depth_m": {"type": "number", "description": "Overall depth (top to bottom) in metres"},
+                    "north_arrow_deg": {
+                        "type": "number",
+                        "description": "Only if the plan has a north arrow or compass: the direction it points on the page, "
+                        "in degrees clockwise from straight up (0 = up, 90 = right). Leave out if there is none.",
+                    },
                     "rooms": {
                         "type": "array",
                         "items": {
@@ -93,6 +98,8 @@ INSTRUCTIONS = """You are helping turn a property's floor plan and room photos i
    about 0.8 m wide). Approximate an L-shaped or irregular room with its bounding rectangle.
    If the plan shows several floors, place them side by side, left to right, without overlapping.
    Give rooms with the same type distinct names as labelled (e.g. "Bedroom 1", "Bedroom 2").
+   If the plan has a north arrow or compass rose, give the direction it points as north_arrow_deg
+   (degrees clockwise from straight up the page). Leave it out if there isn't one; don't guess.
 
 2. For each photo, decide which room it shows. Set confident to true only when the photo clearly
    identifies one room. If it could be one of several (e.g. two similar bedrooms), set confident to
@@ -143,7 +150,14 @@ def normalize(raw: dict[str, Any], photo_ids: list[str]) -> dict[str, Any]:
 
     width = max(float(plan_in.get("width_m") or 0), max(r["x"] + r["width"] for r in rooms))
     depth = max(float(plan_in.get("depth_m") or 0), max(r["y"] + r["depth"] for r in rooms))
-    plan = {"width": round(width, 3), "depth": round(depth, 3), "rooms": rooms}
+    plan: dict[str, Any] = {"width": round(width, 3), "depth": round(depth, 3), "rooms": rooms}
+    # north: the compass bearing the top of the plan faces, from the north arrow if there is one
+    try:
+        arrow = float(plan_in["north_arrow_deg"])
+        if arrow == arrow and abs(arrow) <= 720:  # not NaN, sane
+            plan["north"] = round((360 - arrow) % 360, 1)
+    except (KeyError, TypeError, ValueError):
+        pass
 
     def rid(name: Any) -> str | None:
         return by_name.get(str(name).strip().lower()) if name else None

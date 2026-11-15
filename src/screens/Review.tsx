@@ -81,8 +81,8 @@ export function Review() {
           const chosen = assignments[m.photoId]
           const candidates = m.candidates?.length ? m.candidates : plan.rooms.map((r) => r.id)
           const fills: Record<string, string> = {}
-          for (const c of candidates) fills[c] = chosen ? '#FFFFFF' : 'var(--candidate)'
-          if (chosen && chosen !== 'skip') fills[chosen] = '#BFD0FB'
+          for (const c of candidates) fills[c] = chosen ? 'var(--surface)' : 'var(--candidate)'
+          if (chosen && chosen !== 'skip') fills[chosen] = 'var(--plan-chosen)'
           return (
             <section key={m.photoId} className={chosen ? 'card review-card' : 'card review-card open'} aria-label={`Check ${name}`}>
               <div className="review-photo">

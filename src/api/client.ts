@@ -2,8 +2,8 @@
 // With VITE_USE_MOCK unset or "true", it uses ./mock.ts. Set VITE_USE_MOCK=false
 // and VITE_API_URL to the real server to switch over. Endpoints are in README.md.
 
-import type { BuildRequest, BuildStatus, MatchResponse } from './types'
-import { mockGetBuildStatus, mockMatchPhotos, mockStartBuild } from './mock'
+import type { BuildRequest, BuildStatus, FurnishResponse, MatchResponse } from './types'
+import { mockFurnishRoom, mockGetBuildStatus, mockMatchPhotos, mockStartBuild } from './mock'
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? '/api'
@@ -51,4 +51,25 @@ export async function getBuildStatus(jobId: string): Promise<BuildStatus> {
   // Accept a modelUrl relative to the API (e.g. "/model/abc.glb") as well as a full URL.
   if (status.modelUrl) status.modelUrl = new URL(status.modelUrl, new URL(API_URL + '/', window.location.href)).toString()
   return status
+}
+
+/** For the walk-through: what furniture the room's photos show, and roughly where it stands. */
+export async function furnishRoom(projectId: string, roomId: string, photoIds: string[]): Promise<FurnishResponse> {
+  if (USE_MOCK) return mockFurnishRoom(roomId)
+  return json(
+    await fetch(`${API_URL}/furnish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, roomId, photoIds }),
+    }),
+  )
+}
+
+/**
+ * For the walk-through's 3D photos: where the backend serves a photo's depth map (GET /depth/{projectId}/{photoId}.png,
+ * made the first time it's asked for). null with the mock backend, so photos stay flat.
+ */
+export function depthUrlBase(projectId: string): string | null {
+  if (USE_MOCK) return null
+  return new URL(`${API_URL}/depth/${encodeURIComponent(projectId)}`, window.location.href).toString()
 }

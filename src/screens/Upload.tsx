@@ -30,7 +30,7 @@ const sizeLabel = (bytes: number) => (bytes > 1e6 ? `${(bytes / 1e6).toFixed(1)}
 
 export function Upload() {
   const project = useProject()
-  const { floorPlan, photos, setFloorPlan, addPhotos, removePhoto, setMatchResult, setJob } = project
+  const { floorPlan, photos, address, setFloorPlan, addPhotos, removePhoto, setMatchResult, setJob, setAddress } = project
   const navigate = useNavigate()
   const planInput = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
@@ -73,7 +73,10 @@ export function Upload() {
       <Header step={0} />
       <main className="page">
         <h1 className="page-title">Upload your floor plan and photos</h1>
-        <p className="lede">The floor plan gives us the layout. Your photos tell us what each room looks like.</p>
+        <p className="lede">
+          The floor plan gives us the layout. Your photos tell us what each room looks like. Want to see the result first?{' '}
+          <a href="/tour/index.html">Walk through a sample flat</a>.
+        </p>
 
         <div className="row">
           <div className="col-main">
@@ -170,6 +173,26 @@ export function Upload() {
                 </p>
               )}
             </section>
+
+            <section className="card" aria-labelledby="addr-h">
+              <div className="card-head">
+                <h2 id="addr-h">Address</h2>
+                <span className="pill">Optional</span>
+              </div>
+              <p className="hint">Used for the street view at the start of the walk-through. Leave it blank to skip the street.</p>
+              <label htmlFor="address-input" className="visually-hidden">
+                Street address
+              </label>
+              <input
+                id="address-input"
+                className="text-input"
+                type="text"
+                autoComplete="street-address"
+                placeholder="e.g. 12 Example Road, London"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+              />
+            </section>
           </div>
 
           <aside className="col-side">
@@ -196,7 +219,7 @@ export function Upload() {
                 <li>We work out which room each photo shows</li>
                 <li>You check any we're unsure about</li>
                 <li>We build the model</li>
-                <li>Explore it, download it or share a link</li>
+                <li>Explore it, walk through it, download it or share a link</li>
               </ol>
             </section>
           </aside>
@@ -238,8 +261,8 @@ export function Upload() {
 export function Spinner({ size = 26 }: { size?: number }) {
   return (
     <svg className="spin" width={size} height={size} viewBox="0 0 24 24" fill="none" strokeWidth={2.5} aria-hidden="true">
-      <circle cx="12" cy="12" r="9" stroke="#D5DFEA" />
-      <path d="M12 3a9 9 0 0 1 9 9" stroke="#4A6F96" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="9" style={{ stroke: 'var(--accent-fill)' }} />
+      <path d="M12 3a9 9 0 0 1 9 9" style={{ stroke: 'var(--accent)' }} strokeLinecap="round" />
     </svg>
   )
 }

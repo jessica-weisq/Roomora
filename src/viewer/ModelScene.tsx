@@ -5,6 +5,7 @@ import { Html, OrbitControls, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { Plan, Room } from '../api/types'
+import { useTheme } from '../state/theme'
 
 export interface SceneHandle {
   zoom: (factor: number) => void
@@ -175,9 +176,11 @@ function Controls({ handle, plan, model }: { handle: Ref<SceneHandle>; plan: Pla
 
 export function ModelScene({ plan, modelUrl, selected, onSelect, handle, labelLayer }: Props) {
   const model = useRef<THREE.Group>(null)
+  const dark = useTheme().resolved === 'dark'
   return (
     <Canvas shadows camera={{ fov: 40, near: 0.1, far: 200 }} dpr={[1, 2]}>
-      <color attach="background" args={['#EEF1F5']} />
+      {/* Matches --stage in styles.css. The model itself keeps its natural colours in dark mode. */}
+      <color attach="background" args={[dark ? '#161A21' : '#EEF1F5']} />
       <hemisphereLight args={['#ffffff', '#c9ced6', 0.9]} />
       <directionalLight position={[8, 14, 10]} intensity={1.2} castShadow shadow-mapSize={[2048, 2048]}>
         <orthographicCamera attach="shadow-camera" args={[-12, 12, 12, -12, 0.5, 50]} />
@@ -194,7 +197,7 @@ export function ModelScene({ plan, modelUrl, selected, onSelect, handle, labelLa
       </group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
         <planeGeometry args={[80, 80]} />
-        <shadowMaterial opacity={0.12} />
+        <shadowMaterial opacity={dark ? 0.35 : 0.12} />
       </mesh>
       <Controls handle={handle} plan={plan} model={model} />
     </Canvas>

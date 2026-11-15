@@ -7,6 +7,8 @@ POST /match       floor plan + photos → rooms on the plan + a room guess for e
 POST /build       confirmed photo → room assignments → starts a build job                (GPU)
 GET  /build/:id   progress; when done, the model URL (and 360° views if enabled)
 GET  /model/:id.glb
+POST /furnish     a room's photos → furniture, floor, wall colour and pictures, for the walk-through   (Gemini or Claude vision)
+GET  /depth/:project/:photo.png   a photo's depth map, for the walk-through's 3D photos     (Depth Anything, CPU)
 ```
 
 ## How a build works
@@ -16,6 +18,14 @@ GET  /model/:id.glb
 3. **Place each scan on the plan** (`core/assemble.py`): turn it upright (phones are held level), put the floor at 0, square the walls up with the room's rectangle, keep MASt3R's metric scale (shrinking only if it overflows the room), centre it in the room and crop the rest.
 4. **Export one .glb** with every room's floor and walls from the plan plus the scans. Nodes are named `floor__<roomId>`, `wall__<roomId>__<n>` and `scan__<roomId>` so the viewer can select rooms.
 5. **Optional 360° views** with fal's Hunyuan World if `FAL_KEY` is set (`core/panorama.py`).
+
+**Furnishing** (`core/furnish.py`) is separate from builds: the walk-through asks for one room at a time, and
+the answer is saved in the project (`furnish/<roomId>.json`). Its furniture types must match what the
+walk-through can draw (`public/tour/js/furnish2.js`); `test_furniture_types_match_the_walkthrough` checks.
+
+**Depth maps** (`core/depth.py`) are made on request and saved in the project (`depth/<photoId>.png`), in the
+same format as `tools/tour/build_depth.py`. The model (about 100 MB) is baked into the Modal web image; locally
+it's downloaded to `~/.cache/roomora` the first time (`pip install onnxruntime`, already in requirements-local.txt).
 
 `core/` is plain Python. `app.py` wires it to Modal; `local.py` runs it on your own machine.
 
@@ -49,12 +59,12 @@ FAKE_SCANS=1 python backend/local.py    # placeholder boxes instead of scans, to
 python -m pytest backend/tests -q       # tests (run from the repo root)
 ```
 
-Without `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`, `local.py` returns a fixed demo layout from `/match`. To use Gemini locally: `GEMINI_API_KEY=... python backend/local.py` (PowerShell: `$env:GEMINI_API_KEY="..."; python backend/local.py`).
+Without `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`, `local.py` returns a fixed demo layout from `/match` and demo furniture from `/furnish`. To use Gemini locally: `GEMINI_API_KEY=... python backend/local.py` (PowerShell: `$env:GEMINI_API_KEY="..."; python backend/local.py`).
 
 ## Costs
 
 - **Modal:** the Starter plan includes monthly free credits. A build uses an L4 GPU for a few minutes, so a few pence per property, plus the first image build.
-- **Gemini / Claude:** one request per upload (the plan plus small thumbnails of each photo). Gemini's free tier costs nothing but has a per-minute limit: if several people upload at once, some get "The AI is busy, try again in a minute".
+- **Gemini / Claude:** one request per upload (the plan plus small thumbnails of each photo), plus one per room the first time someone uses Furnish from photos. Gemini's free tier costs nothing but has a per-minute limit: if several people upload at once, some get "The AI is busy, try again in a minute".
 - **fal (optional):** about $0.15 per room's 360° view.
 
 ## Limits worth knowing

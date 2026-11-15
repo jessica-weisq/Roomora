@@ -239,3 +239,140 @@ def test_provider_choice(monkeypatch):
     assert matching.provider() == "gemini"
     monkeypatch.setenv("MATCH_PROVIDER", "claude")
     assert matching.provider() == "claude"
+
+
+# ---------------------------------------------------------------------------
+# /furnish (the walk-through's "Furnish from photos")
+from core.furnish import ITEM_TYPES, demo_furnish  # noqa: E402
+from core.furnish import normalize as normalize_furniture  # noqa: E402
+
+
+def test_furniture_normalize_drops_bad_items():
+    raw = {"floor": "marble", "items": [
+        {"type": "sofa", "x": 1.4, "y": -0.2, "faces": "sideways", "len": 2.4, "color": "#abcdef", "accent": ["#123456", "red"]},
+        {"type": "spaceship", "x": 0.5, "y": 0.5, "faces": "up"},
+        {"type": "bed", "x": "middle", "y": 0.5, "faces": "up"},
+    ]}
+    out = normalize_furniture(raw)
+    assert out["floor"] is None
+    assert len(out["items"]) == 1
+    sofa = out["items"][0]
+    assert (sofa["x"], sofa["y"], sofa["faces"]) == (1.0, 0.0, "down")
+    assert sofa["len"] == 2.4 and sofa["color"] == "#abcdef" and sofa["accent"] == ["#123456"]
+
+
+def test_furniture_types_match_the_walkthrough():
+    # Every type the backend may return must be one the walk-through can draw (public/tour/js/furnish2.js).
+    js = (Path(__file__).resolve().parents[2] / "public" / "tour" / "js" / "furnish2.js").read_text()
+    for t in ITEM_TYPES:
+        assert f"      {t}(g" in js, t
+
+
+def _jpeg(color=(200, 180, 160)) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 48), color).save(buf, "JPEG")
+    return buf.getvalue()
+
+
+def test_furnish_endpoint(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from core.api import create_app
+    from core.storage import Store
+
+    calls = []
+
+    def fake_furnish(photos, name, width, depth):
+        calls.append((len(photos), name, width, depth))
+        return demo_furnish(photos, name, width, depth)
+
+    store = Store(tmp_path, {})
+    client = TestClient(create_app(store, lambda job, project: None, demo_match, fake_furnish))
+    res = client.post("/match", files=[("floorPlan", ("plan.png", _jpeg((255, 255, 255)), "image/png")),
+                                        ("photos", ("p1", _jpeg(), "image/jpeg")), ("photos", ("p2", _jpeg(), "image/jpeg"))])
+    assert res.status_code == 200, res.text
+    pid = res.json()["projectId"]
+
+    body = {"projectId": pid, "roomId": "bed1", "photoIds": ["p1", "p2"]}
+    first = client.post("/furnish", json=body)
+    assert first.status_code == 200, first.text
+    assert first.json()["items"][0]["type"] == "bed"
+    assert calls == [(2, "Bedroom 1", 5.0, 3.0)]
+    # Same photos again: answered from the saved result, no second AI call
+    assert client.post("/furnish", json=body).json() == first.json()
+    assert len(calls) == 1
+
+    assert client.post("/furnish", json={**body, "roomId": "attic"}).status_code == 404
+    assert client.post("/furnish", json={**body, "photoIds": ["nope"]}).status_code == 400
+    assert client.post("/furnish", json={**body, "projectId": "missing"}).status_code == 404
+
+    no_ai = TestClient(create_app(store, lambda job, project: None, demo_match))
+    assert no_ai.post("/furnish", json=body).status_code == 501
+
+
+# ---------------------------------------------------------------------------
+# Generalising the walk-through: north from the plan, wall colour from the photos
+from core.matching import normalize as normalize_layout  # noqa: E402
+
+
+def _layout(**plan_extra):
+    plan = {"width_m": 8, "depth_m": 6, "rooms": [{"name": "Living room", "x_m": 0, "y_m": 0, "width_m": 5, "depth_m": 4}], **plan_extra}
+    return normalize_layout({"plan": plan, "photos": []}, [])
+
+
+def test_north_from_arrow():
+    assert "north" not in _layout()["plan"]                       # no arrow: no guess
+    assert _layout(north_arrow_deg=0)["plan"]["north"] == 0        # arrow up: up is north
+    assert _layout(north_arrow_deg=90)["plan"]["north"] == 270     # arrow right: up is west
+    assert _layout(north_arrow_deg=-45)["plan"]["north"] == 45     # arrow up-left: up is north-east
+    assert "north" not in _layout(north_arrow_deg="north")["plan"]
+
+
+def test_wall_colour_from_photos():
+    assert normalize_furniture({"floor": "oak", "walls": "#D9D4C7", "items": []})["walls"] == "#d9d4c7"
+    assert normalize_furniture({"floor": "oak", "walls": "beige", "items": []})["walls"] is None
+    assert normalize_furniture({"floor": "oak", "items": []})["walls"] is None
+    assert demo_furnish([b""], "Bedroom 1", 4, 3)["walls"].startswith("#")
+
+
+def test_art_from_photos():
+    raw = {"floor": "oak", "items": [], "art": [
+        {"photo": 2, "box_2d": [100, 200, 500, 600], "wall": "left", "at": 0.3, "w": 0.6, "h": 0.8},
+        {"photo": 0, "box_2d": [100, 200, 500, 600], "wall": "left", "at": 0.3},      # no such photo
+        {"photo": 1, "box_2d": [100, 200, 110, 600], "wall": "up", "at": 0.5},        # too thin
+        {"photo": 1, "box_2d": [100, 200, 500, 600], "wall": "ceiling", "at": 0.5},   # not a wall
+        {"photo": 1, "box_2d": "big", "wall": "up", "at": 0.5},
+    ]}
+    art = normalize_furniture(raw)["art"]
+    assert art == [{"photo": 2, "box": [0.2, 0.1, 0.6, 0.5], "wall": "left", "at": 0.3, "w": 0.6, "h": 0.8}]
+    assert normalize_furniture({"floor": "oak", "items": []})["art"] == []
+    assert len(demo_furnish([b""], "Living room", 5, 4)["art"]) == 1
+
+
+def test_depth_endpoint(tmp_path):
+    from fastapi.testclient import TestClient
+    from core.api import create_app
+    from core.depth import pack
+    from core.storage import Store
+    import numpy as np
+
+    store = Store(tmp_path, {})
+    (store.project_dir("p1") / "photos").mkdir(parents=True)
+    (store.project_dir("p1") / "photos" / "a.jpg").write_bytes(b"jpeg")
+    calls = []
+
+    def fake_depth(jpeg):
+        calls.append(jpeg)
+        return pack(np.linspace(0, 1, 64).reshape(8, 8), 800, 600)
+
+    client = TestClient(create_app(store, lambda j, p: None, demo_match, None, fake_depth))
+    r = client.get("/depth/p1/a.png")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png" and r.content[:4] == b"\x89PNG"
+    assert client.get("/depth/p1/a.png").content == r.content and len(calls) == 1      # cached
+    assert client.get("/depth/p1/missing.png").status_code == 404
+    from PIL import Image
+    import io
+    im = Image.open(io.BytesIO(r.content))
+    assert im.size == (384, 288)
+    no_depth = TestClient(create_app(store, lambda j, p: None, demo_match))
+    assert no_depth.get("/depth/p1/a.png").status_code == 501

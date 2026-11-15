@@ -56,10 +56,9 @@ export function FloorPlan({ plan, fills = {}, onSelect, sublabels, labels = 'ful
               y={r.y}
               width={r.width}
               height={r.depth}
-              stroke="#111827"
+              style={{ stroke: 'var(--plan-line)', fill: fills[r.id] ?? 'var(--surface)', transition: 'fill 300ms ease' }}
               strokeWidth={1.5}
               vectorEffect="non-scaling-stroke"
-              style={{ fill: fills[r.id] ?? '#FFFFFF', transition: 'fill 300ms ease' }}
             />
             {label && (
               <text
@@ -68,7 +67,7 @@ export function FloorPlan({ plan, fills = {}, onSelect, sublabels, labels = 'ful
                 textAnchor="middle"
                 fontSize={tight && labels === 'full' ? fontSize * 0.85 : fontSize}
                 fontWeight={600}
-                fill="#111827"
+                style={{ fill: 'var(--ink)' }}
                 pointerEvents="none"
               >
                 {label}
@@ -80,7 +79,7 @@ export function FloorPlan({ plan, fills = {}, onSelect, sublabels, labels = 'ful
                 y={r.y + r.depth / 2 + fontSize * 0.9}
                 textAnchor="middle"
                 fontSize={fontSize * 0.8}
-                fill="#374151"
+                style={{ fill: 'var(--plan-text-2)' }}
                 pointerEvents="none"
               >
                 {sublabels[r.id]}
@@ -95,7 +94,7 @@ export function FloorPlan({ plan, fills = {}, onSelect, sublabels, labels = 'ful
         width={plan.width}
         height={plan.depth}
         fill="none"
-        stroke="#111827"
+        style={{ stroke: 'var(--plan-line)' }}
         strokeWidth={3}
         vectorEffect="non-scaling-stroke"
         pointerEvents="none"

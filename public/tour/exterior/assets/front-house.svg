@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7fb2de"/><stop offset="1" stop-color="#dcebf6"/></linearGradient>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3e7d3"/><stop offset="1" stop-color="#e2d2b8"/></linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#sky)"/>
+  <ellipse cx="220" cy="140" rx="120" ry="34" fill="#fff" opacity=".8"/>
+  <ellipse cx="930" cy="110" rx="150" ry="38" fill="#fff" opacity=".7"/>
+  <rect y="620" width="1200" height="180" fill="#7fa86a"/>
+  <circle cx="140" cy="520" r="110" fill="#4f7d47"/><rect x="128" y="560" width="24" height="90" fill="#5b4030"/>
+  <circle cx="1070" cy="500" r="130" fill="#46733f"/><rect x="1056" y="560" width="28" height="100" fill="#5b4030"/>
+  <polygon points="300,330 600,150 900,330" fill="#7c4334"/>
+  <rect x="330" y="325" width="540" height="310" fill="url(#wall)"/>
+  <rect x="560" y="470" width="80" height="165" fill="#3f5a74"/>
+  <circle cx="625" cy="555" r="5" fill="#e8c766"/>
+  <rect x="380" y="380" width="120" height="100" fill="#bcd7ea" stroke="#fff" stroke-width="8"/>
+  <rect x="700" y="380" width="120" height="100" fill="#bcd7ea" stroke="#fff" stroke-width="8"/>
+  <rect x="540" y="635" width="120" height="165" fill="#c8b597"/>
+  <text x="600" y="430" font-family="system-ui,sans-serif" font-size="28" text-anchor="middle" fill="#7c4334">12</text>
+</svg>

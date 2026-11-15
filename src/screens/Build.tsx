@@ -57,7 +57,7 @@ export function Build() {
   // Fill rooms in as the walls step (3) and textures step (4) progress.
   const built = Math.round(plan.rooms.length * Math.max(0, Math.min(1, (step - 3 + 0.5) / 2)))
   const fills: Record<string, string> = {}
-  plan.rooms.forEach((r, i) => (fills[r.id] = i < built || done ? 'var(--accent-fill)' : '#FFFFFF'))
+  plan.rooms.forEach((r, i) => (fills[r.id] = i < built || done ? 'var(--accent-fill)' : 'var(--surface)'))
 
   return (
     <>

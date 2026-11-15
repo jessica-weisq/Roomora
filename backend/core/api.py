@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from .images import normalize_photo, prepare_floor_plan, thumbnail
@@ -19,7 +19,12 @@ from .storage import Store
 log = logging.getLogger("photos-to-3d")
 
 MatchFn = Callable[[bytes, str, list[tuple[str, bytes]]], dict[str, Any]]
+# (photo jpegs, room name, width m, depth m) -> {"floor": ..., "items": [...]}; see core/furnish.py
+FurnishFn = Callable[[list[bytes], str, float, float], dict[str, Any]]
+# photo jpeg -> depth map PNG for the walk-through's 3D photos; see core/depth.py
+DepthFn = Callable[[bytes], bytes]
 MAX_PHOTOS = 60
+MAX_FURNISH_PHOTOS = 8
 
 
 class BuildRequest(BaseModel):
@@ -27,12 +32,24 @@ class BuildRequest(BaseModel):
     assignments: dict[str, str]
 
 
+class FurnishRequest(BaseModel):
+    projectId: str
+    roomId: str
+    photoIds: list[str] = []
+
+
 def _safe_id(value: str, fallback: str) -> str:
     v = re.sub(r"[^A-Za-z0-9_-]", "", value or "")[:80]
     return v or fallback
 
 
-def create_app(store: Store, start_build: Callable[[str, str], None], match_fn: MatchFn) -> FastAPI:
+def create_app(
+    store: Store,
+    start_build: Callable[[str, str], None],
+    match_fn: MatchFn,
+    furnish_fn: FurnishFn | None = None,
+    depth_fn: DepthFn | None = None,
+) -> FastAPI:
     app = FastAPI(title="Photos + floor plan → 3D")
     # The frontend is served from another origin (localhost, Netlify), so allow cross-origin calls.
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -114,6 +131,66 @@ def create_app(store: Store, start_build: Callable[[str, str], None], match_fn: 
         if s.get("error"):
             out["error"] = s["error"]
         return out
+
+    @app.post("/furnish")
+    def furnish(req: FurnishRequest) -> dict:
+        """For the walk-through: the furniture a room's photos show, placed roughly on the plan."""
+        if furnish_fn is None:
+            raise HTTPException(501, "Furnishing from photos isn't set up on this server.")
+        project_id = _safe_id(req.projectId, "")
+        store.reload()
+        project = store.project_dir(project_id)
+        if not project_id or not (project / "plan.json").exists():
+            raise HTTPException(404, "That project wasn't found. Please upload again.")
+        plan = store.read_json(project / "plan.json")
+        room = next((r for r in plan.get("rooms", []) if r.get("id") == req.roomId), None)
+        if not room:
+            raise HTTPException(404, "That room isn't in this project.")
+        ids = [_safe_id(p, "") for p in req.photoIds][:MAX_FURNISH_PHOTOS]
+        # The same photos give the same answer: keep it, so reopening the walk-through costs nothing.
+        cache = project / "furnish" / f"{_safe_id(req.roomId, 'room')}.json"
+        if cache.exists():
+            cached = store.read_json(cache)
+            if cached.get("photoIds") == ids:
+                return cached["result"]
+        photos = [thumbnail((project / "photos" / f"{pid}.jpg").read_bytes()) for pid in ids if pid and (project / "photos" / f"{pid}.jpg").exists()]
+        if not photos:
+            raise HTTPException(400, "There are no photos of this room to look at.")
+        try:
+            result = furnish_fn(photos, room.get("name", "room"), float(room.get("width", 4)), float(room.get("depth", 4)))
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        except Exception:
+            log.exception("Furnishing failed")
+            raise HTTPException(502, "Couldn't analyse this room's photos just now. Please try again.")
+        store.write_json(cache, {"photoIds": ids, "result": result})
+        store.commit()
+        return result
+
+    @app.get("/depth/{project_id}/{photo_id}.png")
+    def depth(project_id: str, photo_id: str) -> Response:
+        """For the walk-through's 3D photos: a photo's depth map, made the first time it's asked for."""
+        if depth_fn is None:
+            raise HTTPException(501, "3D photos aren't set up on this server.")
+        pid, phid = _safe_id(project_id, ""), _safe_id(photo_id, "")
+        store.reload()
+        project = store.project_dir(pid)
+        photo = project / "photos" / f"{phid}.jpg"
+        if not pid or not phid or not photo.exists():
+            raise HTTPException(404, "That photo wasn't found.")
+        cached = project / "depth" / f"{phid}.png"
+        headers = {"Cache-Control": "public, max-age=31536000, immutable"}
+        if cached.exists():
+            return Response(cached.read_bytes(), media_type="image/png", headers=headers)
+        try:
+            png = depth_fn(photo.read_bytes())
+        except Exception:
+            log.exception("Depth map failed")
+            raise HTTPException(502, "Couldn't make a 3D photo just now.")
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        cached.write_bytes(png)
+        store.commit()
+        return Response(png, media_type="image/png", headers=headers)
 
     @app.get("/model/{job_id}.glb")
     def model(job_id: str) -> FileResponse:

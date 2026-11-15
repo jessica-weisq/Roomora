@@ -7,6 +7,7 @@ import { FloorPlan } from '../components/FloorPlan'
 import { ModelScene } from '../viewer/ModelScene'
 import type { SceneHandle } from '../viewer/ModelScene'
 import { PanoramaDialog } from '../viewer/PanoramaDialog'
+import { TourDialog } from '../viewer/TourDialog'
 import { downloadGlb } from '../lib/exportGlb'
 import { resolvedAssignments, useProject } from '../state/ProjectContext'
 
@@ -19,6 +20,9 @@ export function Viewer() {
   const [downloading, setDownloading] = useState(false)
   const [panoOpen, setPanoOpen] = useState(false)
   const closePano = useCallback(() => setPanoOpen(false), [])
+  // undefined = closed; null = open in the main living space; a room id = open in that room
+  const [tourRoom, setTourRoom] = useState<string | null | undefined>(undefined)
+  const closeTour = useCallback(() => setTourRoom(undefined), [])
   const scene = useRef<SceneHandle>(null)
   const stage = useRef<HTMLElement>(null)
   const labelLayer = useRef<HTMLDivElement>(null)
@@ -108,9 +112,13 @@ export function Viewer() {
               <Icon name="link" size={16} />
               Share link
             </button>
-            <button type="button" className="btn btn-primary" onClick={onDownload} disabled={downloading}>
+            <button type="button" className="btn" onClick={onDownload} disabled={downloading}>
               <Icon name="download" size={16} />
               {downloading ? 'Preparing…' : 'Download .glb'}
+            </button>
+            <button type="button" className="btn btn-primary" onClick={() => setTourRoom(null)}>
+              <Icon name="walk" size={16} />
+              Walk through
             </button>
           </div>
         </div>
@@ -201,6 +209,10 @@ export function Viewer() {
                 <div className="muted small" style={{ marginBottom: 12 }}>
                   {current.width.toFixed(1)} × {current.depth.toFixed(1)} m · {label(currentPhotos.length)}
                 </div>
+                <button type="button" className="btn" style={{ width: '100%', marginBottom: 12 }} onClick={() => setTourRoom(current.id)}>
+                  <Icon name="walk" size={18} />
+                  Walk through this room
+                </button>
                 {panoramas[current.id] && (
                   <button type="button" className="btn btn-primary" style={{ width: '100%', marginBottom: 12 }} onClick={() => setPanoOpen(true)}>
                     <Icon name="pano" size={18} />
@@ -239,6 +251,7 @@ export function Viewer() {
       {panoOpen && current && panoramas[current.id] && (
         <PanoramaDialog roomName={current.name} url={panoramas[current.id]} onClose={closePano} />
       )}
+      {tourRoom !== undefined && <TourDialog title={title} startRoom={tourRoom} onClose={closeTour} />}
       {toast && (
         <div className="toast" role="status">
           {toast}

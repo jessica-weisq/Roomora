@@ -2,16 +2,20 @@ import { Fragment } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Icon } from './Icon'
+import { ThemeMenu } from './ThemeMenu'
+import { useTheme } from '../state/theme'
 import logo from '../assets/logo.png'
+import logoDark from '../assets/logo-dark.png'
 
 const STEPS = ['Upload', 'Review', 'Build', 'View']
 
 export function Header({ step, right }: { step?: number; right?: ReactNode }) {
+  const { resolved } = useTheme()
   return (
     <header className="header">
       <div className="header-inner">
         <Link to="/" className="brand" aria-label="Roomora home">
-          <img src={logo} alt="Roomora" width={118} height={44} />
+          <img src={resolved === 'dark' ? logoDark : logo} alt="Roomora" width={118} height={44} />
         </Link>
         <div className="header-end">
         {step !== undefined ? (
@@ -34,9 +38,10 @@ export function Header({ step, right }: { step?: number; right?: ReactNode }) {
         ) : (
           right
         )}
-        <Link to="/about" className="header-link">
-          About
-        </Link>
+          <Link to="/about" className="header-link">
+            About
+          </Link>
+          <ThemeMenu />
         </div>
       </div>
     </header>

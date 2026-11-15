@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>House tour</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="exterior/exterior.css">
+<link rel="stylesheet" href="css/tour.css">
+</head>
+<body>
+<main class="app-main">
+  <section class="app-stage">
+    <div class="view-walk"></div>
+    <div class="view-inside" hidden></div>
+    <div class="view-street" hidden></div>
+  </section>
+  <header class="app-head">
+    <div class="app-title">
+      <h1 class="app-address">Loading the tour</h1>
+      <p class="app-sub"></p>
+    </div>
+    <div class="app-controls">
+      <div class="app-modes" role="group" aria-label="View">
+        <button type="button" class="mode-walk" aria-pressed="true">3D walk</button>
+        <button type="button" class="mode-inside" aria-pressed="false">3D photos</button>
+        <button type="button" class="mode-street" aria-pressed="false">Street</button>
+      </div>
+      <button type="button" class="mode-edit" aria-pressed="false">Edit hotspots</button>
+    </div>
+  </header>
+  <aside class="app-warnings" hidden>
+    <div><strong>property.js has problems</strong><ul></ul></div>
+    <button type="button">Dismiss</button>
+  </aside>
+  <section class="app-plan" aria-label="Floor plan"></section>
+  <button type="button" class="plan-show" hidden>Floor plan</button>
+</main>
+<script src="vendor/three-r128.min.js"></script>
+<script src="config.js"></script>
+<script src="property.js"></script>
+<script src="js/tour-core.js"></script>
+<script src="js/floorplan.js"></script>
+<script src="js/roomviewer.js"></script>
+<script type="module" src="exterior/exterior.js"></script>
+<script src="js/streetview.js"></script>
+<script src="js/furnish2.js"></script>
+<script src="js/decorate.js"></script>
+<script src="js/arrange.js"></script>
+<script src="js/outlook.js"></script>
+<script src="js/walk3d.js"></script>
+<script src="js/uploads.js"></script>
+<script src="js/roomora.js"></script>
+<script src="js/shell.js"></script>
+</body>
+</html>
