@@ -122,12 +122,21 @@
       }
 
       function renderLinkChips() {
-        linksNav.replaceChildren(...(room.links || []).map((l) => {
+        const chips = (room.links || []).map((l) => {
           const b = el("button", "rv-chip", T.linkLabel(P, l));
           b.type = "button";
           b.addEventListener("click", () => go(l));
           return b;
-        }));
+        });
+        // a room's video is easy to miss at the end of its photos: put a button for it first
+        const v = (room.media || []).findIndex((m) => m.type === "video");
+        if (v >= 0 && v !== idx) {
+          const b = el("button", "rv-chip rv-chip-video", `▶ ${room.media[v].label || "Video"}`);
+          b.type = "button";
+          b.addEventListener("click", () => show(room, v));
+          chips.unshift(b);
+        }
+        linksNav.replaceChildren(...chips);
       }
 
       function hotspotButton(l) {

@@ -215,6 +215,7 @@ body.plan-large .rv-bar { max-width: calc(100% - 2 * var(--gap) - min(62vw, 760p
 .rv-media button:hover { background: var(--hairline); }
 .rv-count { padding: 0 2px; color: var(--on-glass-soft); }
 .rv-links { display: flex; gap: 6px; flex-wrap: wrap; }
+.rv-chip-video { border-color: var(--brass); }
 .rv-edit {
   position: absolute; z-index: 4; left: var(--gap); right: var(--gap); top: 118px; max-width: 640px;
   padding: 14px; border-radius: var(--radius-panel); background: var(--stone); color: var(--stone-ink); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
