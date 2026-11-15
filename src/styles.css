@@ -321,6 +321,8 @@ button, input, select { font: inherit; }
 .about-credits { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 15px; }
 .about-by, .about-note { color: var(--muted); }
 .about-ctas { margin-top: 44px; display: flex; flex-wrap: wrap; gap: 12px; }
+.team-photo { max-width: 620px; margin: 24px auto 0; }
+.team-photo img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 12px 30px var(--shadow); }
 
 /* Text fields */
 .text-input { width: 100%; min-height: 44px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 15px; }

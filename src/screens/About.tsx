@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Header } from '../components/Header'
+import teamPhoto from '../assets/team-photo.jpg'
 
 const STEPS = [
   {
@@ -97,6 +98,15 @@ export function About() {
             The name comes from the Italian <em>veduta</em>, &ldquo;view&rdquo;: the detailed, true-to-life paintings of real
             places made by artists like Canaletto.
           </p>
+          <figure className="team-photo">
+            <img
+              src={teamPhoto}
+              alt="The Veduta team at Imperial AI Hack 2026"
+              width={1500}
+              height={2000}
+              loading="lazy"
+            />
+          </figure>
         </section>
 
         <section aria-labelledby="credits">
