@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ProjectProvider } from './state/ProjectContext'
+import { ThemeProvider } from './state/theme'
 import { Upload } from './screens/Upload'
 import { Review } from './screens/Review'
 import { Build } from './screens/Build'
@@ -11,6 +12,7 @@ const Viewer = lazy(() => import('./screens/Viewer').then((m) => ({ default: m.V
 
 export default function App() {
   return (
+    <ThemeProvider>
     <ProjectProvider>
       <BrowserRouter>
         <Routes>
@@ -30,5 +32,6 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     </ProjectProvider>
+    </ThemeProvider>
   )
 }

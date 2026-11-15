@@ -238,8 +238,8 @@ export function Upload() {
 export function Spinner({ size = 26 }: { size?: number }) {
   return (
     <svg className="spin" width={size} height={size} viewBox="0 0 24 24" fill="none" strokeWidth={2.5} aria-hidden="true">
-      <circle cx="12" cy="12" r="9" stroke="#D5DFEA" />
-      <path d="M12 3a9 9 0 0 1 9 9" stroke="#4A6F96" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="9" style={{ stroke: 'var(--accent-fill)' }} />
+      <path d="M12 3a9 9 0 0 1 9 9" style={{ stroke: 'var(--accent)' }} strokeLinecap="round" />
     </svg>
   )
 }
