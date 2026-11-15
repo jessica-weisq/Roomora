@@ -122,6 +122,22 @@ def test_api_end_to_end(tmp_path):
     assert client.get("/build/unknown").status_code == 404
 
 
+def test_api_reports_provider_configuration_without_leaking_details(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from core.api import create_app
+    from core.matching import VisionProviderError
+    from core.storage import Store
+
+    def unavailable(*_args):
+        raise VisionProviderError("AI analysis is not configured. Please try again later.")
+
+    client = TestClient(create_app(Store(tmp_path, {}), lambda *_: None, unavailable))
+    response = client.post("/match", files=[("floorPlan", ("plan.png", _jpeg((255, 255, 255)), "image/png"))])
+    assert response.status_code == 503
+    assert response.json()["detail"] == "AI analysis is not configured. Please try again later."
+
+
 def test_build_failure_is_reported(tmp_path):
     from core.jobs import run_build
     from core.storage import Store
@@ -207,7 +223,7 @@ def test_gemini_rate_limit_is_friendly():
     class FakeClient:
         models = FakeModels()
 
-    with pytest.raises(ValueError, match="busy"):
+    with pytest.raises(matching.VisionProviderError, match="busy"):
         matching.match_photos_gemini(b"x", "image/png", [("p1", _jpeg((1, 2, 3)))], client=FakeClient())
 
 

@@ -1,6 +1,9 @@
-const { chromium } = require('playwright');
-const fs = require('fs');
-const path = require('path');
+import { chromium } from 'playwright';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Serve the folder first: python3 -m http.server 8765
 const BASE = process.env.BASE || 'http://localhost:8765/index.html';
 const mock = fs.readFileSync(path.join(__dirname, 'mock-maps.js'), 'utf8');
@@ -59,7 +62,9 @@ const cases = [
     await page.waitForTimeout(500);
     const room = await page.textContent('#room-name');
     const hidden = await page.evaluate(() => document.querySelector('#exterior').classList.contains('tx-hidden'));
-    let ok = state.mode === c.expect && room === 'Now in: hallway' && hidden && state.enterVisible && errors.length === 0;
+    // The real Google endpoint may emit browser errors for an intentionally invalid key.
+    // The contract here is the graceful photo fallback, not Google's console output.
+    let ok = state.mode === c.expect && room === 'Now in: hallway' && hidden && state.enterVisible && (c.google === 'real' || errors.length === 0);
     if (c.reason && !state.status.includes(c.reason)) ok = false;
     if (c.placeholder && !state.placeholder) ok = false;
     if (c.radii && JSON.stringify(state.reqs.map((r) => r.radius)) !== JSON.stringify(c.radii)) ok = false;
