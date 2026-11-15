@@ -4,11 +4,11 @@ import { Header } from '../components/Header'
 const STEPS = [
   {
     title: 'Upload a floor plan and photos',
-    body: 'A PDF or image of the plan, plus a few photos of each room. Phone photos are fine.',
+    body: 'A PDF or image of the plan, plus a few photos of each room, and the address if you like. Phone photos are fine.',
   },
   {
     title: 'AI reads the plan and sorts the photos',
-    body: 'A vision model finds every room on the plan, measures it, and works out which room each photo shows. If it is unsure, it asks you.',
+    body: 'A vision model finds every room on the plan, including unlabelled bathrooms and halls, measures it, and works out which room each photo shows. If it is unsure, it asks you.',
   },
   {
     title: 'Each room is rebuilt in 3D',
@@ -18,15 +18,22 @@ const STEPS = [
     title: 'Explore it',
     body: 'Orbit around the whole home, click a room to see its photos, open a 360° view, or download the model as a .glb file.',
   },
+  {
+    title: 'Walk through it',
+    body: 'Walk from room to room, furnished in the colours from your photos. Open any photo in 3D, look out of the windows, step out to the street, or redesign a room and let AI show how it would really look.',
+  },
 ]
 
 const CREDITS = [
   { name: 'MASt3R', by: 'Naver Labs Europe', note: 'room reconstruction · CC BY-NC-SA 4.0', href: 'https://github.com/naver/mast3r' },
-  { name: 'Gemini', by: 'Google', note: 'reading floor plans and matching photos', href: 'https://ai.google.dev' },
+  { name: 'Gemini', by: 'Google', note: 'reading floor plans, matching photos and furnishing rooms', href: 'https://ai.google.dev' },
   { name: 'HunyuanWorld via fal', by: 'Tencent / fal.ai', note: '360° room impressions', href: 'https://fal.ai' },
-  { name: 'three.js', by: 'three.js authors', note: '3D viewer', href: 'https://threejs.org' },
+  { name: 'Nano Banana via fal', by: 'Google / fal.ai', note: 'Reimagine: photo-real redesigns', href: 'https://fal.ai' },
+  { name: 'Depth Anything', by: 'HKU and TikTok', note: '3D photos', href: 'https://github.com/LiheYoung/Depth-Anything' },
+  { name: 'Google Maps Platform', by: 'Google', note: 'Street View and the view from the windows', href: 'https://developers.google.com/maps' },
+  { name: 'three.js', by: 'three.js authors', note: '3D viewer and walk-through', href: 'https://threejs.org' },
   { name: 'Marzipano', by: 'Google', note: '360° viewer', href: 'https://www.marzipano.net' },
-  { name: 'Modal and Netlify', by: '', note: 'GPU backend and hosting', href: '' },
+  { name: 'Modal, Netlify and Vercel', by: '', note: 'GPU backend and hosting', href: '' },
 ]
 
 export function About() {
@@ -73,6 +80,10 @@ export function About() {
               each view is invented and won&rsquo;t match the real room exactly.
             </li>
             <li>
+              The walk-through&rsquo;s furniture and the Reimagine pictures are impressions too: the AI picks furniture and
+              colours to match what it sees in your photos, not the exact pieces.
+            </li>
+            <li>
               Veduta is a hackathon prototype. Uploads are processed by third-party AI services, so please don&rsquo;t
               upload photos of a home without the owner&rsquo;s permission, or anything private.
             </li>
@@ -101,9 +112,14 @@ export function About() {
           </ul>
         </section>
 
-        <Link to="/" className="btn btn-primary btn-lg about-cta">
-          Try it
-        </Link>
+        <div className="about-ctas">
+          <Link to="/" className="btn btn-primary btn-lg">
+            Try it
+          </Link>
+          <Link to="/demo" className="btn btn-lg">
+            See the demo
+          </Link>
+        </div>
       </main>
     </>
   )
