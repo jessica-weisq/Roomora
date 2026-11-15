@@ -24,6 +24,10 @@ log = logging.getLogger(__name__)
 DEFAULT_MODEL = "claude-sonnet-5-5"
 DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"  # fast; gemini-3.8-flash timed out even on "hi" for free keys
 
+
+class VisionProviderError(RuntimeError):
+    """A safe, actionable error from the configured vision provider."""
+
 TOOL = {
     "name": "report_layout",
     "description": "Report the rooms on the floor plan and which room each photo shows.",
@@ -192,7 +196,23 @@ def match_photos(plan_bytes: bytes, plan_mime: str, photos: list[tuple[str, byte
         return match_photos_gemini(plan_bytes, plan_mime, photos)
     if which == "claude":
         return match_photos_claude(plan_bytes, plan_mime, photos)
-    raise RuntimeError("No vision model configured: set GEMINI_API_KEY or ANTHROPIC_API_KEY.")
+    # This used to become an opaque 502 in the API, which made a missing Modal
+    # secret look exactly like an upload problem.
+    raise VisionProviderError("AI analysis is not configured. Please try again later.")
+
+
+def _provider_error(error: Exception) -> VisionProviderError | None:
+    """Translate common provider failures without exposing credentials or internals."""
+    text = f"{type(error).__name__}: {error}".lower()
+    if "429" in text or "resource_exhausted" in text:
+        return VisionProviderError("The AI is busy right now. Please wait a minute and try again.")
+    if any(value in text for value in ("timeout", "timed out", "deadline")):
+        return VisionProviderError("The AI took too long to answer. Please try again with fewer photos.")
+    if any(value in text for value in ("401", "403", "unauthenticated", "permission_denied", "api key")):
+        return VisionProviderError("AI analysis is temporarily unavailable. Please try again later.")
+    if "404" in text and "model" in text:
+        return VisionProviderError("The configured AI model is unavailable. Please try again later.")
+    return None
 
 
 def _gemini_schema() -> dict[str, Any]:
@@ -264,11 +284,9 @@ def match_photos_gemini(plan_bytes: bytes, plan_mime: str, photos: list[tuple[st
             else:
                 raise
     except Exception as e:
-        text = f"{type(e).__name__}: {e}"
-        if "429" in text or "RESOURCE_EXHAUSTED" in text:  # the free tier's per-minute limit
-            raise ValueError("The AI is busy right now (free-tier limit). Please wait a minute and try again.") from e
-        if any(k in text.lower() for k in ("timeout", "timed out", "deadline")):
-            raise ValueError("The AI took too long to answer. Please try again, perhaps with fewer photos.") from e
+        friendly = _provider_error(e)
+        if friendly:
+            raise friendly from e
         raise
     print(f"Gemini matched {len(photos)} photos in {time.monotonic() - started:.1f}s", flush=True)  # shows in Modal logs
     try:
@@ -297,13 +315,19 @@ def match_photos_claude(plan_bytes: bytes, plan_mime: str, photos: list[tuple[st
         content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64(data)}})
     content.append({"type": "text", "text": INSTRUCTIONS})
 
-    response = client.messages.create(
-        model=os.environ.get("ANTHROPIC_MODEL", DEFAULT_MODEL),
-        max_tokens=8000,
-        tools=[TOOL],
-        tool_choice={"type": "tool", "name": TOOL["name"]},
-        messages=[{"role": "user", "content": content}],
-    )
+    try:
+        response = client.messages.create(
+            model=os.environ.get("ANTHROPIC_MODEL", DEFAULT_MODEL),
+            max_tokens=8000,
+            tools=[TOOL],
+            tool_choice={"type": "tool", "name": TOOL["name"]},
+            messages=[{"role": "user", "content": content}],
+        )
+    except Exception as e:
+        friendly = _provider_error(e)
+        if friendly:
+            raise friendly from e
+        raise
     tool_input = next((b.input for b in response.content if getattr(b, "type", "") == "tool_use"), None)
     if not isinstance(tool_input, dict):
         raise ValueError("The vision model didn't return a layout. Please try again.")

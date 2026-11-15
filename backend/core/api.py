@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from .images import normalize_photo, prepare_floor_plan, thumbnail
+from .matching import VisionProviderError
 from .storage import Store
 
 log = logging.getLogger("photos-to-3d")
@@ -68,6 +69,9 @@ def create_app(store: Store, start_build: Callable[[str, str], None], match_fn: 
 
         try:
             result = match_fn(plan_bytes, plan_mime, thumbs)
+        except VisionProviderError as e:
+            # Provider configuration and availability errors aren't malformed uploads.
+            raise HTTPException(503, str(e))
         except ValueError as e:
             raise HTTPException(422, str(e))
         except Exception:

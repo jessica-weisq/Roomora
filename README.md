@@ -42,7 +42,7 @@ The backend in `backend/` implements the API below. All network calls are in `sr
 
 ```
 VITE_USE_MOCK=false
-VITE_API_URL=http://localhost:8000/api
+VITE_API_URL=http://localhost:8000
 ```
 
 If the API is on another origin, either enable CORS there or add a proxy in `vite.config.ts` (`server.proxy: { '/api': 'http://localhost:8000' }`) and leave `VITE_API_URL` unset.
