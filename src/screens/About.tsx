@@ -34,9 +34,9 @@ export function About() {
     <>
       <Header />
       <main className="page about">
-        <h1 className="page-title">About Roomora</h1>
+        <h1 className="page-title">About Veduta</h1>
         <p className="about-lead">
-          Roomora turns a floor plan and a handful of room photos into a 3D model of a home that you can look around from
+          Veduta turns a floor plan and a handful of room photos into a 3D model of a home that you can look around from
           any device. No 3D scanner, no special camera, no modelling skills.
         </p>
 
@@ -59,7 +59,7 @@ export function About() {
           <h2 id="why">Why</h2>
           <p>
             Listing photos show what a room looks like but not how the home fits together. Floor plans show the layout but
-            not what it feels like to be there. Roomora puts the two together, so buyers, renters and anyone planning a move
+            not what it feels like to be there. Veduta puts the two together, so buyers, renters and anyone planning a move
             can understand a place before they visit it.
           </p>
         </section>
@@ -73,7 +73,7 @@ export function About() {
               each view is invented and won&rsquo;t match the real room exactly.
             </li>
             <li>
-              Roomora is a hackathon prototype. Uploads are processed by third-party AI services, so please don&rsquo;t
+              Veduta is a hackathon prototype. Uploads are processed by third-party AI services, so please don&rsquo;t
               upload photos of a home without the owner&rsquo;s permission, or anything private.
             </li>
           </ul>
@@ -82,6 +82,10 @@ export function About() {
         <section aria-labelledby="team">
           <h2 id="team">Who made it</h2>
           <p>Originally built by Neev Dhall, William Robinson and Jessica Wei at Imperial AI Hack 2026.</p>
+          <p>
+            The name comes from the Italian <em>veduta</em>, &ldquo;view&rdquo;: the detailed, true-to-life paintings of real
+            places made by artists like Canaletto.
+          </p>
         </section>
 
         <section aria-labelledby="credits">

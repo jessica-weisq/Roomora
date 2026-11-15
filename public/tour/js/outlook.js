@@ -7,7 +7,7 @@
    then property.streetAddress (geocoded). property.north is the compass bearing of "up" on the floor plan
    in degrees (default 0: up is north); set it if the plan is drawn turned.
 
-   Needs the Maps key (config.js, or VITE_GOOGLE_MAPS_KEY on the Roomora website) with the Maps JavaScript API,
+   Needs the Maps key (config.js, or VITE_GOOGLE_MAPS_KEY on the Veduta website) with the Maps JavaScript API,
    Street View Static API and Geocoding API enabled. With no key, no coverage, or any failure, the drawn
    scenery stays. The panorama is taken at street level, so from upper floors the view sits lower than it
    really would. Google's terms need the imagery credited, so a "Google Street View" note shows while it's used. */

@@ -51,15 +51,15 @@ export function TourDialog({ title, startRoom, onClose }: Props) {
     if (!plan) return
     const origin = window.location.origin
     const reply = (id: number, result: unknown, error?: { message: string }) =>
-      frame.current?.contentWindow?.postMessage({ type: 'roomora:reply', id, result, error }, origin)
+      frame.current?.contentWindow?.postMessage({ type: 'veduta:reply', id, result, error }, origin)
 
     async function onMessage(e: MessageEvent) {
       if (e.origin !== origin || e.source !== frame.current?.contentWindow || !e.data || typeof e.data !== 'object') return
       const msg = e.data as { type: string; id?: number; roomId?: string }
-      if (msg.type === 'roomora:hello') {
+      if (msg.type === 'veduta:hello') {
         frame.current?.contentWindow?.postMessage(
           {
-            type: 'roomora:project',
+            type: 'veduta:project',
             project: {
               projectId,
               title,
@@ -78,7 +78,7 @@ export function TourDialog({ title, startRoom, onClose }: Props) {
           origin,
         )
       }
-      if (msg.type === 'roomora:furnish' && msg.id != null && msg.roomId && projectId) {
+      if (msg.type === 'veduta:furnish' && msg.id != null && msg.roomId && projectId) {
         const ids = (photosByRoom[msg.roomId] ?? []).map((p) => p.id)
         try {
           reply(msg.id, await furnishRoom(projectId, msg.roomId, ids))

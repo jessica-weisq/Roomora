@@ -1,11 +1,11 @@
-/* Roomora embed. The Roomora website opens the tour in a frame (tour/index.html?embed=1) and sends the
+/* Veduta embed. The Veduta website opens the tour in a frame (tour/index.html?embed=1) and sends the
    project once the tour says hello:
      { projectId, title, address, planImage (URL or null), planIsImage,
        plan: { width, depth, rooms: [{ id, name, x, y, width, depth }] }   // metres, origin top-left
        photos: { roomId: [{ id, url, name }] }, panoramas: { roomId: url }, modelUrl, mapsKey, startRoom }
    The tour builds a walkable flat from it: walls traced from the plan image when that lines up with the
    room sizes, otherwise drawn from the room rectangles with doorways and windows. Starter furniture by
-   room type; "Furnish from photos" asks the website, which asks Roomora's backend (POST /api/furnish).
+   room type; "Furnish from photos" asks the website, which asks Veduta's backend (POST /api/furnish).
    MASt3R room scans from the build's .glb are placed in the walk when there is one. */
 (function () {
   const T = window.Tour;
@@ -20,8 +20,8 @@
   window.addEventListener("message", (e) => {
     if (e.origin !== origin || e.source !== window.parent || !e.data || typeof e.data !== "object") return;
     const m = e.data;
-    if (m.type === "roomora:project" && gotProject) gotProject(m.project);
-    if (m.type === "roomora:reply" && pending.has(m.id)) {
+    if (m.type === "veduta:project" && gotProject) gotProject(m.project);
+    if (m.type === "veduta:reply" && pending.has(m.id)) {
       const p = pending.get(m.id); pending.delete(m.id);
       if (m.error) p.reject(m.error); else p.resolve(m.result);
     }
@@ -32,7 +32,7 @@
     post(Object.assign({ type, id }, data));
     setTimeout(() => { if (pending.has(id)) { pending.delete(id); reject({ message: "The website didn’t answer." }); } }, 180000);
   });
-  T.waitForRoomora = () => new Promise((resolve) => { gotProject = resolve; post({ type: "roomora:hello" }); });
+  T.waitForVeduta = () => new Promise((resolve) => { gotProject = resolve; post({ type: "veduta:hello" }); });
 
   // ---- rooms ----
   const TYPES = [
@@ -121,7 +121,7 @@
     return { tr, mpp, origin: [ox * mpp, oy * mpp], image: true };
   }
 
-  T.fromRoomora = async function (project) {
+  T.fromVeduta = async function (project) {
     const U = T.uploadsInternals;
     T.embedConfig = { mapsKey: project.mapsKey || "", projectId: project.projectId };
     const plan = project.plan;
@@ -153,9 +153,9 @@
     const entry = (pick(["hall"]) || pick(["living"]) || rooms[0]).id;
     const start = (project.startRoom && rooms.find((r) => r.id === project.startRoom)) ? project.startRoom : (pick(["living"]) || rooms[0]).id;
     const area = rooms.filter((r) => r.type !== "terrace").reduce((s, r) => s + r.src.width * r.src.depth, 0);
-    T.roomoraScan = project.modelUrl ? { url: project.modelUrl, origin: built.origin } : null;
+    T.vedutaScan = project.modelUrl ? { url: project.modelUrl, origin: built.origin } : null;
     const property = {
-      id: project.projectId || "roomora",
+      id: project.projectId || "veduta",
       address: project.title || "Your property",
       subtitle: `${rooms.length} rooms, about ${Math.round(area)} sq m`,
       streetAddress: project.address || "",
@@ -316,7 +316,7 @@
     return new Promise((resolve, reject) => { const s = document.createElement("script"); s.src = src; s.onload = resolve; s.onerror = reject; document.head.appendChild(s); });
   }
   async function placeScans() {
-    const scan = T.roomoraScan, w3 = T.__w3;
+    const scan = T.vedutaScan, w3 = T.__w3;
     if (!scan || !w3) return;
     const THREE = w3.THREE;
     if (!scanLoading) scanLoading = (async () => {
@@ -364,7 +364,7 @@
       if (!room) return;
       btn.disabled = true; btn.textContent = "Looking at the photos…"; note.hidden = true;
       try {
-        const res = await T.embedRequest("roomora:furnish", { roomId: room.id });
+        const res = await T.embedRequest("veduta:furnish", { roomId: room.id });
         const out = T.uploadsInternals.toFurnishing(T.P, room, res);
         const art = await artPieces(T.P, room, res);
         out.furnishing = out.furnishing.concat(art);
@@ -403,7 +403,7 @@
     const worker = async () => {
       while (next < todo.length) {
         const r = todo[next++];
-        try { results[r.id] = await T.embedRequest("roomora:furnish", { roomId: r.id }); } catch (e) { /* that room keeps its typical furniture */ }
+        try { results[r.id] = await T.embedRequest("veduta:furnish", { roomId: r.id }); } catch (e) { /* that room keeps its typical furniture */ }
         finished++;
         if (finished < todo.length) say(`Furnishing from your photos: ${finished} of ${todo.length} rooms…`);
       }

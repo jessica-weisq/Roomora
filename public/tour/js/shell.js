@@ -5,8 +5,8 @@
   const $ = (s) => document.querySelector(s);
   let BASE;
   try {
-    // inside the Roomora website the project comes from the page around the tour
-    BASE = T.isEmbed ? await T.fromRoomora(await T.waitForRoomora()) : await T.loadProperty();
+    // inside the Veduta website the project comes from the page around the tour
+    BASE = T.isEmbed ? await T.fromVeduta(await T.waitForVeduta()) : await T.loadProperty();
   } catch (e) {
     if (T.isEmbed) {
       $(".app-main").innerHTML = `<div class="fatal"><h2>The walk-through couldn’t be built</h2><p>Something in this project’s floor plan couldn’t be read. Close this and try the 3D view instead.</p></div>`;

@@ -25,7 +25,7 @@ walk-through can draw (`public/tour/js/furnish2.js`); `test_furniture_types_matc
 
 **Depth maps** (`core/depth.py`) are made on request and saved in the project (`depth/<photoId>.png`), in the
 same format as `tools/tour/build_depth.py`. The model (about 100 MB) is baked into the Modal web image; locally
-it's downloaded to `~/.cache/roomora` the first time (`pip install onnxruntime`, already in requirements-local.txt).
+it's downloaded to `~/.cache/veduta` the first time (`pip install onnxruntime`, already in requirements-local.txt).
 
 `core/` is plain Python. `app.py` wires it to Modal; `local.py` runs it on your own machine.
 

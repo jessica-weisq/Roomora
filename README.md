@@ -1,4 +1,4 @@
-# Roomora
+# Veduta
 
 Photos + floor plan → 3D. The user uploads a floor plan and room photos (and optionally the address), we match each photo to a room automatically, they check any we're unsure about, we build the model, and they explore it in 3D: as a dollhouse model, on the floor plan, or by walking through it room by room and stepping out to the street.
 

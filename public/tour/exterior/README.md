@@ -1,6 +1,6 @@
 # Track C: Street View exterior
 
-> **In Roomora** this is the walk-through's **Street** view: `public/tour/js/streetview.js` calls
+> **In Veduta** this is the walk-through's **Street** view: `public/tour/js/streetview.js` calls
 > `initExterior` with the project's address (from the Upload screen) and the Maps key from
 > `VITE_GOOGLE_MAPS_KEY`. Its **Go inside** button sends `tour:room`, which the walk-through follows.
 > The demo page and tests below still work on their own.

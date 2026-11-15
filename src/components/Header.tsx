@@ -14,8 +14,8 @@ export function Header({ step, right }: { step?: number; right?: ReactNode }) {
   return (
     <header className="header">
       <div className="header-inner">
-        <Link to="/" className="brand" aria-label="Roomora home">
-          <img src={resolved === 'dark' ? logoDark : logo} alt="Roomora" width={118} height={44} />
+        <Link to="/" className="brand" aria-label="Veduta home">
+          <img src={resolved === 'dark' ? logoDark : logo} alt="Veduta" width={105} height={44} />
         </Link>
         <div className="header-end">
         {step !== undefined ? (

@@ -5,7 +5,7 @@ inverse depth (near = high) as a 16-bit number packed into red (high byte) and g
 The tour's photo viewer (public/tour/js/roomviewer.js, depthView) turns it into a 3D surface.
 
 The model (about 100 MB) is read from DEPTH_MODEL, or downloaded once to DEPTH_MODEL_DIR (default
-~/.cache/roomora). Needs onnxruntime, pillow and numpy.
+~/.cache/veduta). Needs onnxruntime, pillow and numpy.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ _lock = threading.Lock()
 def model_path() -> Path:
     if os.environ.get("DEPTH_MODEL"):
         return Path(os.environ["DEPTH_MODEL"])
-    return Path(os.environ.get("DEPTH_MODEL_DIR", Path.home() / ".cache" / "roomora")) / "depth_anything_vits14.onnx"
+    return Path(os.environ.get("DEPTH_MODEL_DIR", Path.home() / ".cache" / "veduta")) / "depth_anything_vits14.onnx"
 
 
 def download_model() -> Path:

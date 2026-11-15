@@ -1,13 +1,13 @@
 # Walk-through (house tour)
 
-The walk-through is Roomora's first-person view of a property: walk round the rooms in 3D, look at each
+The walk-through is Veduta's first-person view of a property: walk round the rooms in 3D, look at each
 room's photos, restyle the walls and step outside to the street. It lives in `public/tour/` and is plain
 JavaScript with three.js r128 from a CDN, separate from the React app's own three.js.
 
 It runs two ways:
 
-- **Inside Roomora**: the View screen's **Walk through** button opens `/tour/index.html?embed=1` in a frame
-  (`src/viewer/TourDialog.tsx`) and sends it the current project. `public/tour/js/roomora.js` builds a flat
+- **Inside Veduta**: the View screen's **Walk through** button opens `/tour/index.html?embed=1` in a frame
+  (`src/viewer/TourDialog.tsx`) and sends it the current project. `public/tour/js/veduta.js` builds a flat
   from it. See "How a project becomes a flat" below.
 - **The sample flat**: `/tour/index.html` on its own shows Clarges, Mayfair from `public/tour/property.js`.
   The Upload screen links to it.
@@ -25,13 +25,13 @@ http://localhost:5173/tour/index.html), not by double-clicking the file.
   (Track C, `public/tour/exterior/`). **Go inside** enters the hall.
 - **Paint and wallpaper**: click a wall, then pick a colour on the wheel and a finish (plain, stripe,
   pinstripe, trellis, polka dot, damask, grasscloth) for that wall or the whole room. Saved on this device.
-- **Furnish from photos** (inside Roomora): asks the backend what furniture the room's photos show and
+- **Furnish from photos** (inside Veduta): asks the backend what furniture the room's photos show and
   refurnishes it. Positions are approximate, because the photos don't say where they were taken from.
 - **Furniture on/off**: the furniture is an impression, not a record of the property.
 
 ## How a project becomes a flat
 
-`roomora.js` receives `{ plan (rooms in metres), planImage, photos per room, panoramas, modelUrl, address }`:
+`veduta.js` receives `{ plan (rooms in metres), planImage, photos per room, panoramas, modelUrl, address }`:
 
 1. **Walls.** If the floor plan is an image, its walls are traced in the browser (`tracePlan` in
    `js/uploads.js`) and the building's outline is matched to the plan's size in metres. If it's a PDF, or the
@@ -45,9 +45,9 @@ http://localhost:5173/tour/index.html), not by double-clicking the file.
    furniture. Untested so far: MASt3R hasn't produced a real model yet.
 5. **Street.** The address from the Upload screen goes to Track C, which geocodes it.
 
-Messages between the site and the frame (same origin only): the tour sends `roomora:hello`, the site
-answers `roomora:project`; for furnishing the tour sends `roomora:furnish {id, roomId}` and the site
-answers `roomora:reply {id, result | error}` after calling `furnishRoom()` in `src/api/client.ts`.
+Messages between the site and the frame (same origin only): the tour sends `veduta:hello`, the site
+answers `veduta:project`; for furnishing the tour sends `veduta:furnish {id, roomId}` and the site
+answers `veduta:reply {id, result | error}` after calling `furnishRoom()` in `src/api/client.ts`.
 
 ## Files
 
@@ -55,7 +55,7 @@ answers `roomora:reply {id, result | error}` after calling `furnishRoom()` in `s
 | --- | --- |
 | `public/tour/index.html`, `css/tour.css` | The page and its styles |
 | `public/tour/js/shell.js` | Loads the property (sample or project), mounts the views, rebuilds on changes |
-| `public/tour/js/roomora.js` | Builds a flat from a Roomora project; Furnish from photos; scans |
+| `public/tour/js/veduta.js` | Builds a flat from a Veduta project; Furnish from photos; scans |
 | `public/tour/js/walk3d.js` | The 3D walk: model, lighting, movement |
 | `public/tour/js/furnish2.js` | Furniture models. Its types must match `ITEM_TYPES` in `backend/core/furnish.py` (a backend test checks) |
 | `public/tour/js/decorate.js` | Paint and wallpaper |
@@ -69,7 +69,7 @@ answers `roomora:reply {id, result | error}` after calling `furnishRoom()` in `s
 
 ## Street View key
 
-Inside Roomora, set `VITE_GOOGLE_MAPS_KEY` (in `.env.local`, or Netlify's environment variables). For the
+Inside Veduta, set `VITE_GOOGLE_MAPS_KEY` (in `.env.local`, or Netlify's environment variables). For the
 sample on its own, put it in `public/tour/config.js` as `MAPS_API_KEY`. Enable the Maps JavaScript, Maps
 Static and Geocoding APIs, and restrict the key to your site's address: a browser key is always visible.
 Without a key the street shows the front photo.
