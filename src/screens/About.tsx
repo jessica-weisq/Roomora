@@ -55,6 +55,15 @@ export function About() {
           any device. No 3D scanner, no special camera, no modelling skills.
         </p>
 
+        <section aria-labelledby="why">
+          <h2 id="why">Why</h2>
+          <p>
+            Listing photos show what a room looks like but not how the home fits together. Floor plans show the layout but
+            not what it feels like to be there. Veduta puts the two together, so buyers, renters and anyone planning a move
+            can understand a place before they visit it.
+          </p>
+        </section>
+
         <section aria-labelledby="how">
           <h2 id="how">How it works</h2>
           <ol className="about-steps">
@@ -68,15 +77,6 @@ export function About() {
               </li>
             ))}
           </ol>
-        </section>
-
-        <section aria-labelledby="why">
-          <h2 id="why">Why</h2>
-          <p>
-            Listing photos show what a room looks like but not how the home fits together. Floor plans show the layout but
-            not what it feels like to be there. Veduta puts the two together, so buyers, renters and anyone planning a move
-            can understand a place before they visit it.
-          </p>
         </section>
 
         <section aria-labelledby="limits">
