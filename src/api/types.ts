@@ -14,6 +14,11 @@ export interface Plan {
   width: number
   depth: number
   rooms: Room[]
+  /**
+   * Compass bearing the top of the plan faces, in degrees (0 = north, 90 = east), read from the plan's north
+   * arrow. Missing when the plan has none. The walk-through uses it to turn the view outside and the sunlight.
+   */
+  north?: number | null
 }
 
 export interface PhotoMatch {
@@ -56,6 +61,46 @@ export interface BuildStatus {
    */
   panoramas?: Record<string, string>
   error?: string
+}
+
+/**
+ * One piece of furniture seen in a room's photos, for the walk-through. x and y place its centre as
+ * fractions of the room (x: 0 left wall → 1 right wall, y: 0 top wall → 1 bottom wall, as on the plan);
+ * faces is the way its front faces on the plan. Sizes are metres. Positions are approximate: the
+ * photos don't say where they were taken from.
+ */
+export interface FurnishItem {
+  type: string
+  x: number
+  y: number
+  faces: 'up' | 'down' | 'left' | 'right'
+  len?: number | null
+  w?: number | null
+  d?: number | null
+  r?: number | null
+  color?: string
+  accent?: string[]
+}
+
+/**
+ * A framed picture seen on a wall, for the walk-through to cut out of the photo and hang. photo is 1-based in the
+ * order the photos were sent; box is [x0, y0, x1, y1] as fractions of that photo; wall and at place it in the room.
+ */
+export interface FurnishArt {
+  photo: number
+  box: [number, number, number, number]
+  wall: 'up' | 'down' | 'left' | 'right'
+  at: number
+  w?: number
+  h?: number
+}
+
+export interface FurnishResponse {
+  floor: 'oak' | 'dark-oak' | 'carpet' | 'stone' | 'tile' | null
+  /** Main wall colour seen in the photos, #rrggbb */
+  walls?: string | null
+  items: FurnishItem[]
+  art?: FurnishArt[]
 }
 
 export const BUILD_STEPS: { label: string; detail: string }[] = [

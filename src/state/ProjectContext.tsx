@@ -25,6 +25,8 @@ interface ProjectState {
   modelUrl: string | null
   /** roomId → 360° image URL */
   panoramas: Record<string, string>
+  /** Optional street address, for the street view in the walk-through */
+  address: string
 }
 
 interface ProjectApi extends ProjectState {
@@ -35,6 +37,7 @@ interface ProjectApi extends ProjectState {
   assign: (photoId: string, roomId: string) => void
   setJob: (jobId: string | null) => void
   setBuildResult: (modelUrl: string | null, panoramas: Record<string, string>) => void
+  setAddress: (address: string) => void
   reset: () => void
 }
 
@@ -48,6 +51,7 @@ const empty: ProjectState = {
   jobId: null,
   modelUrl: null,
   panoramas: {},
+  address: '',
 }
 
 const Ctx = createContext<ProjectApi | null>(null)
@@ -96,6 +100,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  const setAddress = useCallback((address: string) => setState((s) => ({ ...s, address })), [])
+
   const reset = useCallback(() => {
     setState((s) => {
       if (s.floorPlan) URL.revokeObjectURL(s.floorPlan.url)
@@ -105,8 +111,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo<ProjectApi>(
-    () => ({ ...state, setFloorPlan, addPhotos, removePhoto, setMatchResult, assign, setJob, setBuildResult, reset }),
-    [state, setFloorPlan, addPhotos, removePhoto, setMatchResult, assign, setJob, setBuildResult, reset],
+    () => ({ ...state, setFloorPlan, addPhotos, removePhoto, setMatchResult, assign, setJob, setBuildResult, setAddress, reset }),
+    [state, setFloorPlan, addPhotos, removePhoto, setMatchResult, assign, setJob, setBuildResult, setAddress, reset],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

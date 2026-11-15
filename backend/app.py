@@ -27,9 +27,12 @@ web_image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
         "fastapi[standard]>=0.115", "python-multipart", "anthropic>=0.40", "google-genai>=1.30",
-        "pillow", "pillow-heif", "numpy<2", "trimesh",
+        "pillow", "pillow-heif", "numpy<2", "trimesh", "onnxruntime",
     )
-    .add_local_python_source("core")
+    # the depth model for 3D photos (about 100 MB), baked in so it isn't downloaded on every cold start
+    .env({"DEPTH_MODEL_DIR": "/opt/depth"})
+    .add_local_python_source("core", copy=True)
+    .run_commands("python -c 'from core.depth import download_model; download_model()'")
 )
 
 gpu_image = (
@@ -77,6 +80,8 @@ class Builder:
 @modal.asgi_app()
 def api():
     from core.api import create_app
+    from core.depth import depth_png
+    from core.furnish import furnish_room
     from core.matching import match_photos
     from core.storage import Store
 
@@ -85,4 +90,4 @@ def api():
     def start_build(job_id: str, project_id: str) -> None:
         Builder().build.spawn(job_id, project_id)
 
-    return create_app(store, start_build, match_photos)
+    return create_app(store, start_build, match_photos, furnish_room, depth_png)

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>House Tour Exterior</title>
+  <link rel="stylesheet" href="exterior.css">
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { margin: 0; height: 100%; background: #10151d; font-family: system-ui, sans-serif; }
+    #app { position: relative; height: 100%; }
+    #exterior { position: absolute; inset: 0; z-index: 1; }
+    /* Stand-in for the Track A/B room viewer. */
+    #room {
+      position: absolute; inset: 0; display: grid; place-content: center; gap: 16px; text-align: center;
+      color: #e8edf3; background: radial-gradient(circle at 50% 40%, #2b3a4f, #10151d);
+    }
+    #room h1 { margin: 0; font-size: 28px; }
+    #room button { justify-self: center; padding: 10px 20px; border-radius: 999px; border: 1px solid #5d7390; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+    #status {
+      position: absolute; left: 16px; top: 60px; z-index: 3; max-width: calc(100% - 32px);
+      font: 12px/1.4 ui-monospace, monospace; color: #cfd8e3; background: rgba(0,0,0,.55);
+      padding: 4px 10px; border-radius: 6px; pointer-events: none;
+    }
+  </style>
+  <!-- Optional: defines window.TOUR_CONFIG.MAPS_API_KEY. A 404 here is fine. -->
+  <script src="config.js"></script>
+</head>
+<body>
+  <div id="app">
+    <section id="room" aria-live="polite">
+      <h1>Room viewer goes here</h1>
+      <p id="room-name">Waiting for tour:room…</p>
+      <button type="button" id="back">Back outside</button>
+    </section>
+    <div id="exterior"></div>
+    <div id="status">mode: loading</div>
+  </div>
+
+  <script type="module">
+    import { initExterior } from './exterior.js';
+
+    // Demo settings. Any of these can be overridden in the URL, e.g.
+    //   ?address=...&lat=..&lng=..&photo=..&room=..   (and ?key=... or ?nokey for testing)
+    const q = new URLSearchParams(location.search);
+    const opts = {
+      container: '#exterior',
+      address: q.get('address') ?? '221B Baker Street, London NW1 6XE',
+      lat: q.has('lat') ? q.get('lat') : 51.523767,
+      lng: q.has('lng') ? q.get('lng') : -0.1585557,
+      frontPhotoUrl: q.get('photo') ?? 'assets/front-house.svg',
+      entryRoomId: q.get('room') ?? 'hallway',
+      onModeChange: (mode, reason) => {
+        document.getElementById('status').textContent = `mode: ${mode} (${reason})`;
+      },
+    };
+    if (q.has('key')) opts.apiKey = q.get('key');
+    if (q.has('nokey')) { window.TOUR_CONFIG = {}; }
+
+    const ext = initExterior(opts);
+    window.ext = ext; // for poking at it in the console
+
+    // This is all Tracks A/B need to listen for.
+    document.addEventListener('tour:room', (e) => {
+      document.getElementById('room-name').textContent = `Now in: ${e.detail.roomId}`;
+    });
+    document.getElementById('back').addEventListener('click', () => ext.show());
+  </script>
+</body>
+</html>

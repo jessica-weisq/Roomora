@@ -3,7 +3,8 @@
     pip install -r backend/requirements-local.txt
     python backend/local.py            # http://localhost:8000
 
-- With GEMINI_API_KEY (or ANTHROPIC_API_KEY) set, /match uses that model; otherwise a fixed demo layout.
+- With GEMINI_API_KEY (or ANTHROPIC_API_KEY) set, /match and /furnish use that model; otherwise a fixed
+  demo layout and demo furniture.
 - MASt3R runs only if this machine has a CUDA GPU and the mast3r repo on PYTHONPATH. Otherwise the
   model is the plan's floors and walls without scans. Set FAKE_SCANS=1 to get placeholder boxes instead.
 """
@@ -21,6 +22,7 @@ sys.path.insert(0, str(HERE))
 
 from core.api import create_app  # noqa: E402
 from core.jobs import run_build  # noqa: E402
+from core.furnish import demo_furnish, furnish_room  # noqa: E402
 from core.matching import demo_match, match_photos, provider  # noqa: E402
 from core.storage import Store  # noqa: E402
 
@@ -62,7 +64,12 @@ def make_app():
         logging.info("/match uses %s.", which)
     else:
         logging.warning("No GEMINI_API_KEY or ANTHROPIC_API_KEY: /match returns a fixed demo layout.")
-    return create_app(store, start_build, match)
+    from core import depth
+
+    depth_fn = depth.depth_png if depth.available() else None
+    if not depth_fn:
+        logging.warning("onnxruntime isn't installed: photos in the walk-through stay flat (pip install onnxruntime).")
+    return create_app(store, start_build, match, furnish_room if which else demo_furnish, depth_fn)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,118 @@
+/* Track C exterior view. All classes are prefixed tx- to avoid clashing with Tracks A/B. */
+.tx-root {
+  --tx-accent: #1f6feb;
+  --tx-accent-hover: #1858c4;
+  --tx-text: #fff;
+  --tx-glass: rgba(15, 20, 30, 0.55);
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  overflow: hidden;
+  background: #1b2330;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--tx-text);
+  opacity: 1;
+  transition: opacity 0.45s ease, visibility 0.45s;
+}
+.tx-root.tx-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+.tx-stage, .tx-layer { position: absolute; inset: 0; }
+.tx-layer { width: 100%; height: 100%; }
+.tx-layer[hidden] { display: none; }
+
+.tx-photo {
+  background-color: #2a3442;
+  background-size: cover;
+  background-position: center;
+  animation: tx-kenburns 24s ease-in-out infinite alternate;
+}
+.tx-photo.tx-placeholder { animation: none; }
+.tx-photo svg { width: 100%; height: 100%; display: block; }
+.tx-static { object-fit: cover; background: #e5e3df; }
+.tx-pano { background: #000; }
+
+.tx-inset {
+  position: absolute;
+  right: 16px;
+  bottom: 88px;
+  width: min(34%, 240px);
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border: 3px solid #fff;
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+.tx-inset[hidden] { display: none; }
+
+/* Overlay: pointer-events off so the panorama stays draggable underneath. */
+.tx-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.35), transparent 22%, transparent 70%, rgba(0,0,0,0.45));
+}
+.tx-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; justify-content: space-between; }
+.tx-address, .tx-badge {
+  background: var(--tx-glass);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 14px;
+  line-height: 1.4;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tx-address { font-weight: 600; }
+.tx-address[hidden], .tx-badge[hidden] { display: none; }
+.tx-badge { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.tx-spinner {
+  display: none;
+  width: 12px; height: 12px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: tx-spin 0.8s linear infinite;
+}
+.tx-root[data-mode="loading"] .tx-spinner, .tx-badge.tx-busy .tx-spinner { display: inline-block; }
+
+.tx-enter {
+  pointer-events: auto;
+  align-self: center;
+  margin-bottom: 8px;
+  padding: 14px 28px;
+  min-height: 48px;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--tx-accent);
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.tx-enter:hover { background: var(--tx-accent-hover); transform: translateY(-1px); }
+.tx-enter:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+
+@media (max-width: 520px) {
+  .tx-overlay { padding: 12px; }
+  .tx-enter { align-self: stretch; }
+  .tx-inset { bottom: 80px; right: 12px; width: 40%; }
+}
+
+@keyframes tx-spin { to { transform: rotate(360deg); } }
+@keyframes tx-kenburns { from { transform: scale(1); } to { transform: scale(1.08); } }
+@media (prefers-reduced-motion: reduce) {
+  .tx-photo, .tx-spinner { animation: none; }
+  .tx-root { transition: none; }
+}
