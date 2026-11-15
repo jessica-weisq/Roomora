@@ -240,6 +240,7 @@ window.PROPERTY_INLINE =
         {
           "type": "video",
           "src": "img/reception-ai-motion.mp4",
+          "poster": "img/reception-ai-motion.jpg",
           "mime": "video/mp4",
           "label": "AI-generated motion view"
         }

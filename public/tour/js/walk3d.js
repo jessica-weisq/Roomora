@@ -652,7 +652,10 @@
         photoList.forEach((src, i) => {
           const b = document.createElement("button");
           b.type = "button";
-          b.setAttribute("aria-label", `Open photo ${i + 1} of the ${room.name.toLowerCase()} in 3D`);
+          const isVideo = room.media[real[i].i].type === "video";
+          b.setAttribute("aria-label", isVideo ? `Play the ${room.media[real[i].i].label || "video"} of the ${room.name.toLowerCase()}`
+            : `Open photo ${i + 1} of the ${room.name.toLowerCase()} in 3D`);
+          if (isVideo) b.classList.add("is-video");
           const im = document.createElement("img"); im.src = src; im.alt = "";
           b.appendChild(im);
           b.addEventListener("click", () => T.emit("tour:photo", { roomId: room.id, index: real[i].i }));

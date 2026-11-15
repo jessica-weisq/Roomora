@@ -118,8 +118,10 @@
       const canvas = m.type === "pano" ? panoPlaceholder(P, room, idx) : photoPlaceholder(P, room, idx);
       return { image: canvas, placeholder: true };
     };
-    const skip = !m.src || (P.__skipFiles && !m.src.startsWith("data:"));
-    const p = (skip ? Promise.reject() : T.loadImage(m.src))
+    // a video is shown by its poster frame here (loading the video itself as an image would download it all and fail)
+    const src = m.type === "video" ? m.poster : m.src;
+    const skip = !src || (P.__skipFiles && !src.startsWith("data:"));
+    const p = (skip ? Promise.reject() : T.loadImage(src))
       .then((image) => ({ image, placeholder: false }))
       .catch(make);
     cache.set(key, p);

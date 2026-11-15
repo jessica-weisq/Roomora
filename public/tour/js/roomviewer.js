@@ -182,6 +182,7 @@
         video.controls = true;
         video.playsInline = true;
         video.preload = "metadata";
+        if (m.poster) video.poster = m.poster;
         video.setAttribute("aria-label", `${r.name}: ${m.label || "AI-generated video"}`);
         const source = document.createElement("source");
         source.src = m.src;
