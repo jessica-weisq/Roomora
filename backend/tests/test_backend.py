@@ -376,3 +376,64 @@ def test_depth_endpoint(tmp_path):
     assert im.size == (384, 288)
     no_depth = TestClient(create_app(store, lambda j, p: None, demo_match))
     assert no_depth.get("/depth/p1/a.png").status_code == 501
+
+
+def test_rooms_placed_from_boxes():
+    # Two rooms side by side on a drawing 10 m wide and 8 m deep, plus an en suite inside the bedroom's corner.
+    # The model's own metre positions are wrong (as they often are); the boxes and written sizes win.
+    raw = {"plan": {"width_m": 10, "depth_m": 8, "rooms": [
+        {"name": "Living room", "box_2d": [0, 0, 500, 600], "width_m": 6, "depth_m": 4, "x_m": 3, "y_m": 2},
+        {"name": "Bedroom", "box_2d": [0, 600, 500, 1000], "width_m": 4, "depth_m": 4.4},       # one misread size
+        {"name": "En suite", "box_2d": [500, 800, 750, 1000], "width_m": 2, "depth_m": 2},
+        {"name": "Hall", "box_2d": [500, 0, 1000, 800], "width_m": 8, "depth_m": 4},
+    ]}, "photos": []}
+    rooms = {r["name"]: r for r in normalize_layout(raw, [])["plan"]["rooms"]}
+    assert rooms["Living room"]["x"] == 0 and rooms["Living room"]["width"] == 6
+    assert rooms["Bedroom"]["x"] == 6 and rooms["Bedroom"]["width"] == 4 and rooms["Bedroom"]["depth"] == 4   # median scale
+    assert (rooms["En suite"]["x"], rooms["En suite"]["y"], rooms["En suite"]["width"], rooms["En suite"]["depth"]) == (8, 4, 2, 2)
+    assert rooms["En suite"]["box"] == [0.8, 0.5, 1.0, 0.75]
+    # without boxes, the metre positions are used as before
+    old = normalize_layout({"plan": {"width_m": 5, "depth_m": 4, "rooms": [{"name": "Kitchen", "x_m": 1, "y_m": 0, "width_m": 3, "depth_m": 4}]}, "photos": []}, [])
+    assert old["plan"]["rooms"][0]["x"] == 1 and "box" not in old["plan"]["rooms"][0]
+
+
+def test_fal_result_shapes():
+    from core.panorama import first_image_url, image_extension
+    assert first_image_url({"image": {"url": "https://fal.media/a.jpg", "width": 1920}}) == "https://fal.media/a.jpg"
+    assert first_image_url({"images": [{"url": "https://fal.media/b.png"}], "seed": 3}) == "https://fal.media/b.png"
+    assert first_image_url({"panorama": {"url": "https://fal.media/c.webp"}}) == "https://fal.media/c.webp"
+    assert first_image_url({"world": {"preview": {"url": "https://fal.media/d.jpg"}}}) == "https://fal.media/d.jpg"
+    assert first_image_url({"seed": 3}) is None
+    assert image_extension(b"\x89PNG\r\n\x1a\n....") == "png" and image_extension(b"\xff\xd8\xff") == "jpg"
+
+
+def test_panoramas_are_kept_with_the_build(tmp_path):
+    from fastapi.testclient import TestClient
+    from core.api import create_app
+    from core.jobs import run_build
+    from core.storage import Store
+
+    png = b"\x89PNG\r\n\x1a\n" + b"x" * 100
+    calls = []
+
+    def fake_fal(room_name, photo):
+        calls.append(room_name)
+        if "fail" in room_name.lower():
+            raise RuntimeError("fal said no")
+        return png
+
+    store = Store(tmp_path, {})
+    app = create_app(store, lambda job, proj: run_build(store, job, proj, None, fake_fal), demo_match)
+    client = TestClient(app)
+    files = [("floorPlan", ("plan.png", _jpeg((255, 255, 255)), "image/png"))]
+    files += [("photos", (f"photo-{i}", _jpeg((40 * i, 100, 150)), "image/jpeg")) for i in range(3)]
+    body = client.post("/match", files=files).json()
+    assignments = {m["photoId"]: (m["roomId"] or "skip") for m in body["matches"]}
+    job = client.post("/build", json={"projectId": body["projectId"], "assignments": assignments}).json()["jobId"]
+    s = client.get(f"/build/{job}").json()
+    assert s["state"] == "done" and len(calls) == len(set(assignments.values()) - {"skip"})
+    assert s["panoramas"] and all(u.startswith("http") and f"/panorama/{job}/" in u for u in s["panoramas"].values())
+    one = next(iter(s["panoramas"].values()))
+    r = client.get(one[one.index("/panorama/"):])
+    assert r.status_code == 200 and r.content == png and r.headers["content-type"] == "image/png"
+    assert client.get(f"/panorama/{job}/../model.png").status_code == 404

@@ -63,7 +63,7 @@
         const { w, h } = f.planSize;
         const unit = w / 1000;
         const svg = svgEl("svg", { viewBox: `0 0 ${w} ${h}`, role: "group", "aria-label": f.name + " plan" });
-        const rooms = P.rooms.filter((r) => r.floor === floorId);
+        const rooms = P.rooms.filter((r) => r.floor === floorId).sort((a, b) => T.polyArea(b.outline) - T.polyArea(a.outline));
         if (f.plan) {
           svg.appendChild(svgEl("image", { href: f.plan, x: 0, y: 0, width: w, height: h, class: "fp-image" }));
         } else {

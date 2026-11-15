@@ -116,3 +116,14 @@
   .tx-photo, .tx-spinner { animation: none; }
   .tx-root { transition: none; }
 }
+
+/* no Street View: a plain card with the address and a link to Google Maps */
+.tx-photo.tx-placeholder { display: flex; align-items: center; justify-content: center; padding-bottom: 110px; box-sizing: border-box; background: radial-gradient(ellipse at 50% 40%, #3a332c, #1c1814); }
+.tx-ph-card { max-width: min(420px, 86%); text-align: center; color: #f4efe7; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.tx-photo.tx-placeholder .tx-ph-card svg { width: 44px; height: 44px; flex: none; position: static; color: #c9a46a; }
+.tx-ph-title { margin: 0; font-size: 20px; font-weight: 600; }
+.tx-ph-addr { margin: 0; font-size: 15px; color: rgba(244, 239, 231, 0.85); }
+.tx-ph-why { margin: 0; font-size: 13.5px; line-height: 1.45; color: rgba(244, 239, 231, 0.65); }
+.tx-ph-why:empty { display: none; }
+.tx-ph-link { margin-top: 6px; padding: 7px 16px; border-radius: 999px; border: 1px solid rgba(244, 239, 231, 0.35); color: #f4efe7; text-decoration: none; font-size: 14px; }
+.tx-ph-link:hover { background: rgba(244, 239, 231, 0.12); }

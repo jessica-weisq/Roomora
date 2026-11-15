@@ -266,8 +266,34 @@
       wallMesh.receiveShadow = true; wallMesh.castShadow = true;
       instanced(M.walls, new THREE.MeshStandardMaterial({ color: lin("#2e231c"), roughness: 0.45, envMapIntensity: 0.5 }), 0.14, 0, 0.02).receiveShadow = true;
       const glassMat = new THREE.MeshPhysicalMaterial({ color: lin("#c9dbe3"), roughness: 0.04, metalness: 0, transparent: true, opacity: 0.16, depthWrite: false, envMapIntensity: 1.2 });
-      instanced(M.glass, glassMat, H, 0, 0);
-      instanced(M.glass, new THREE.MeshStandardMaterial({ color: lin("#4b3a2c"), metalness: 0.7, roughness: 0.4 }), 0.05, 1.05, 0.01);
+      // model.windows "punched": ordinary windows with wall below the sill and above the head (uploaded flats);
+      // otherwise floor-to-ceiling glazing with a transom bar, as in the sample flat
+      const punched = M.windows === "punched", SILL = 0.9, HEAD = Math.min(2.1, H - 0.3);
+      if (punched) {
+        instanced(M.glass, glassMat, HEAD - SILL, SILL, 0);
+        // the wall under and over each window, in the colour of the room it belongs to
+        const roomColour = ([x, y, w, h]) => {
+          const horiz = w >= h, probes = horiz ? [[x + (w >> 1), y - 1], [x + (w >> 1), y + h]] : [[x - 1, y + (h >> 1)], [x + w, y + (h >> 1)]];
+          for (const [px, pz] of probes) {
+            if (px < 0 || pz < 0 || px >= GW || pz >= GH || G[pz * GW + px] < 2) continue;
+            const r = T.roomAtPoint(P, (px + 0.5) * M.cell, (pz + 0.5) * M.cell);
+            if (r && r.wallColor) return r.wallColor;
+          }
+          return "#ece7de";
+        };
+        const infillMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, envMapIntensity: 0.2 });
+        const tint = new THREE.Color();
+        [[SILL, 0], [H - HEAD, HEAD]].forEach(([height, y0]) => {
+          const im = instanced(M.glass, infillMat, height, y0, 0);
+          im.castShadow = true; im.receiveShadow = true;
+          M.glass.forEach((rc, i) => im.setColorAt(i, tint.set(roomColour(rc)).convertSRGBToLinear()));
+        });
+        instanced(M.glass, new THREE.MeshStandardMaterial({ color: lin("#2e231c"), roughness: 0.45, envMapIntensity: 0.5 }), 0.14, 0, 0.02).receiveShadow = true;
+        instanced(M.glass, new THREE.MeshStandardMaterial({ color: lin("#f4f1ec"), roughness: 0.5 }), 0.04, SILL - 0.04, 0.07);   // sill board
+      } else {
+        instanced(M.glass, glassMat, H, 0, 0);
+        instanced(M.glass, new THREE.MeshStandardMaterial({ color: lin("#4b3a2c"), metalness: 0.7, roughness: 0.4 }), 0.05, 1.05, 0.01);
+      }
       instanced(M.railing, glassMat, 1.1, 0, 0);
       instanced(M.railing, new THREE.MeshStandardMaterial({ color: lin("#5f5d58"), metalness: 0.8, roughness: 0.35 }), 0.05, 1.1, 0.02);
 
@@ -293,6 +319,13 @@
         if (len < 0.35) return;
         const cx = (x + w / 2) * cs, cz = (y + h / 2) * cs;
         const along = (t) => (horiz ? [x * cs + t, cz] : [cx, y * cs + t]);
+        if (punched) {
+          // a plain white frame: head, sill and a centre bar on wider windows
+          const frame = new THREE.MeshStandardMaterial({ color: lin("#f2efe9"), roughness: 0.55 });
+          [SILL, HEAD - 0.06].forEach((y) => addBox(finishes, frame, horiz ? len : 0.08, 0.06, horiz ? 0.08 : len, cx, y, cz));
+          [0.03, len - 0.03].concat(len > 1.4 ? [len / 2] : []).forEach((t) => { const [px, pz] = along(t); addBox(finishes, frame, 0.06, HEAD - SILL, 0.06, px, SILL, pz); });
+          return;
+        }
         let side = 0;
         if (horiz) side = isIndoor(x + (w >> 1), y - 1) ? -1 : isIndoor(x + (w >> 1), y + h) ? 1 : 0;
         else side = isIndoor(x - 1, y + (h >> 1)) ? -1 : isIndoor(x + w, y + (h >> 1)) ? 1 : 0;
@@ -590,7 +623,7 @@
       let currentRoom = null, photoList = [], photoIdx = 0;
       function roomAt() {
         const x = pos.x / s, y = pos.z / s;
-        return P.rooms.find((r) => inPoly(x, y, r.outline)) || null;
+        return T.roomAtPoint(P, x, y);
       }
       let showToken = 0;
       async function showRoom(room) {
@@ -721,6 +754,22 @@
       }) || gate;
       T.walkTo = (x, y, deg = 0, pitchDeg = -4, smooth = false) => {
         const to = { x: x * s, z: y * s, yaw: (deg * Math.PI) / 180, pitch: (pitchDeg * Math.PI) / 180 };
+        // Viewpoints are worked out before the room is furnished, so one can land in furniture or right behind
+        // a wardrobe. Stand where you're clear and can see at least a couple of metres ahead, as near as possible.
+        const ahead = (x, z) => { const dx = -Math.sin(to.yaw), dz = -Math.cos(to.yaw); let t = 0; while (t < 3 && open(x + dx * t, z + dz * t)) t += 0.1; return t; };
+        const want = Math.min(2.2, ahead(to.x, to.z) + (free(to.x, to.z) ? 0 : 3));
+        if (!free(to.x, to.z) || ahead(to.x, to.z) < Math.min(2.2, want)) {
+          let bestSpot = null, bestScore = -Infinity;
+          const home = T.roomAtPoint(P, x, y);
+          const reachable = (nx, nz) => { const n = Math.ceil(Math.hypot(nx - to.x, nz - to.z) / 0.05); for (let k = 0; k <= n; k++) if (cellAt(to.x + ((nx - to.x) * k) / n, to.z + ((nz - to.z) * k) / n) < 2) return false; return true; };
+          for (let r = 0.1; r < 1.6; r += 0.1) for (let a = 0; a < 16; a++) {
+            const nx = to.x + Math.cos((a * Math.PI) / 8) * r, nz = to.z + Math.sin((a * Math.PI) / 8) * r;
+            if (!free(nx, nz) || !reachable(nx, nz) || (home && T.roomAtPoint(P, nx / s, nz / s) !== home)) continue;
+            const sc = Math.min(ahead(nx, nz), 2.5) - r * 0.8;   // a clear view, without moving far
+            if (sc > bestScore) { bestScore = sc; bestSpot = [nx, nz]; }
+          }
+          if (bestSpot && (!free(to.x, to.z) || bestScore > ahead(to.x, to.z))) { to.x = bestSpot[0]; to.z = bestSpot[1]; }
+        }
         target = null;
         if (smooth && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
           let dy = to.yaw - yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));

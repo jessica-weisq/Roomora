@@ -213,17 +213,9 @@ function readConfigKey() {
   return key && !/^YOUR_|^REPLACE/i.test(key) ? key : null;
 }
 
-const PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-  <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9cc7e8"/><stop offset="1" stop-color="#e6f1f8"/></linearGradient></defs>
-  <rect width="400" height="260" fill="url(#sky)"/>
-  <rect y="215" width="400" height="45" fill="#8fb57a"/>
-  <polygon points="110,120 200,55 290,120" fill="#8a4b3c"/>
-  <rect x="125" y="118" width="150" height="100" fill="#efe3cf"/>
-  <rect x="185" y="160" width="30" height="58" fill="#5b3a2a"/>
-  <rect x="140" y="140" width="32" height="28" fill="#bcd7ea" stroke="#fff" stroke-width="3"/>
-  <rect x="228" y="140" width="32" height="28" fill="#bcd7ea" stroke="#fff" stroke-width="3"/>
-  <rect x="180" y="218" width="40" height="42" fill="#c9b79c"/>
-</svg>`;
+// Shown when there's no Street View: a map pin on a plain card (no stand-in drawing of a house, which
+// would misrepresent the property).
+const PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-6.1-6.5-11.2a6.5 6.5 0 0 1 13 0C18.5 14.9 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.4"/></svg>`;
 
 /* ------------------------------------------------------------------ */
 /* initExterior                                                        */
@@ -286,8 +278,25 @@ export function initExterior(options = {}) {
   function showPlaceholder() {
     photoEl.style.backgroundImage = '';
     photoEl.classList.add('tx-placeholder');
-    photoEl.innerHTML = PLACEHOLDER_SVG;
+    const q = opts.address || (house ? `${house.lat},${house.lng}` : '');
+    photoEl.innerHTML = `<div class="tx-ph-card">${PLACEHOLDER_SVG}<p class="tx-ph-title">No street view to show</p>
+      <p class="tx-ph-addr"></p><p class="tx-ph-why"></p><a class="tx-ph-link" target="_blank" rel="noopener">Open in Google Maps</a></div>`;
+    photoEl.querySelector('.tx-ph-addr').textContent = opts.address || '';
+    photoEl.querySelector('.tx-ph-addr').hidden = !opts.address;
+    const link = photoEl.querySelector('.tx-ph-link');
+    if (q) link.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`; else link.hidden = true;
+    fillWhy();
   }
+  let photoReason = null;
+  function fillWhy() {
+    const why = photoEl.querySelector('.tx-ph-why');
+    if (why && photoReason !== null) why.textContent = WHY[photoReason] || (/coverage/.test(String(photoReason)) ? 'Google has no Street View near this address.' : 'Street View couldn’t load just now.');
+  }
+  const WHY = {
+    'missing-key': 'Street View needs a Google Maps key, and this site doesn’t have one yet.',
+    'auth-failure': 'Google refused this site’s Maps key. It may not allow this web address, or billing may be off.',
+    'no-location': 'There’s no address to look up.',
+  };
   let photoOk = false;
   if (opts.frontPhotoUrl) {
     const probe = new Image();
@@ -328,7 +337,11 @@ export function initExterior(options = {}) {
     if (next !== 'static-map') insetEl.hidden = true;
     if (next === 'panorama') setBadge('Street View', { hide: true });
     if (next === 'static-map') setBadge('Street View unavailable here, showing map');
-    if (next === 'photo') setBadge(reason === 'missing-key' ? 'Offline preview' : 'Street View unavailable', { hide: reason === 'missing-key' });
+    if (next === 'photo') {
+      setBadge('Street View unavailable', { hide: true });
+      photoReason = reason || '';
+      fillWhy();
+    }
     if (typeof opts.onModeChange === 'function') { try { opts.onModeChange(next, reason); } catch (_) { /* ignore */ } }
     root.dispatchEvent(new CustomEvent('tour:exterior-mode', { bubbles: true, detail: { mode: next, reason } }));
   }

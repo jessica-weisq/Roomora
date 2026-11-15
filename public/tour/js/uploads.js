@@ -98,15 +98,33 @@
       wall[y * w + x] = on;
     }
     const wc = components(wall, w, h, true);
-    for (let i = 0; i < N; i++) if (wall[i] && wc.sizes[wc.lab[i]] < 60) wall[i] = 0;
-    // outside: everything reachable from the edge of the drawing without crossing a line
+    // drop specks, and solid blocks that aren't walls: a screenshot's toolbar, logos, filled arrows and keys.
+    // Walls are lines, so a wall network fills only a small part of its bounding box.
+    const nComp = wc.sizes.length, bx0 = new Int32Array(nComp).fill(w), by0 = new Int32Array(nComp).fill(h), bx1 = new Int32Array(nComp).fill(-1), by1 = new Int32Array(nComp).fill(-1);
+    for (let i = 0; i < N; i++) {
+      if (!wall[i]) continue;
+      const k = wc.lab[i], x = i % w, y = (i / w) | 0;
+      if (x < bx0[k]) bx0[k] = x; if (x > bx1[k]) bx1[k] = x; if (y < by0[k]) by0[k] = y; if (y > by1[k]) by1[k] = y;
+    }
+    // (big ones only: pillars and thick wall blocks are solid too, but small)
+    const solid = (k) => { const bw = bx1[k] - bx0[k] + 1, bh = by1[k] - by0[k] + 1; return wc.sizes[k] > 1500 && Math.min(bw, bh) > 12 && wc.sizes[k] / (bw * bh) > 0.55; };
+    for (let i = 0; i < N; i++) if (wall[i] && (wc.sizes[wc.lab[i]] < 60 || solid(wc.lab[i]))) wall[i] = 0;
+    // the drawing itself: the box round the walls that are left (anything beyond it, such as a screenshot's
+    // border, captions or page furniture, is outside)
+    let cx0 = w, cy0 = h, cx1 = -1, cy1 = -1;
+    for (let i = 0; i < N; i++) if (wall[i]) { const x = i % w, y = (i / w) | 0; if (x < cx0) cx0 = x; if (x > cx1) cx1 = x; if (y < cy0) cy0 = y; if (y > cy1) cy1 = y; }
+    const pad = 6;
+    if (cx1 < 0) { cx0 = 0; cy0 = 0; cx1 = w - 1; cy1 = h - 1; }
+    cx0 = Math.max(0, cx0 - pad); cy0 = Math.max(0, cy0 - pad); cx1 = Math.min(w - 1, cx1 + pad); cy1 = Math.min(h - 1, cy1 + pad);
+    // outside: everything beyond that box, and everything reachable from its edge without crossing a line
     const outside = new Uint8Array(N), st = [];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (x < cx0 || x > cx1 || y < cy0 || y > cy1) outside[y * w + x] = 1;
     const seed = (i) => { if (!line[i] && !outside[i]) { outside[i] = 1; st.push(i); } };
-    for (let x = 0; x < w; x++) { seed(x); seed((h - 1) * w + x); }
-    for (let y = 0; y < h; y++) { seed(y * w); seed(y * w + w - 1); }
+    for (let x = cx0; x <= cx1; x++) { seed(cy0 * w + x); seed(cy1 * w + x); }
+    for (let y = cy0; y <= cy1; y++) { seed(y * w + cx0); seed(y * w + cx1); }
     while (st.length) {
       const i = st.pop(), x = i % w, y = (i / w) | 0;
-      if (x > 0) seed(i - 1); if (x < w - 1) seed(i + 1); if (y > 0) seed(i - w); if (y < h - 1) seed(i + w);
+      if (x > cx0) seed(i - 1); if (x < cx1) seed(i + 1); if (y > cy0) seed(i - w); if (y < cy1) seed(i + w);
     }
     // 2 px cells: 1 wall, 2 indoor floor, 0 outside
     const CELL = 2, GW = Math.floor(w / CELL), GH = Math.floor(h / CELL), g = new Uint8Array(GW * GH);

@@ -25,6 +25,15 @@
   };
 
   T.roomById = (P, id) => P.rooms.find((r) => r.id === id);
+  // the room at a point on the plan. Rooms can overlap (an L-shaped hall measured as one rectangle, say),
+  // so the smallest room containing the point wins: that's the one you're really standing in.
+  const polyIn = (x, y, pts) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+  T.polyArea = (pts) => { let a = 0; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) a += (pts[j][0] + pts[i][0]) * (pts[j][1] - pts[i][1]); return Math.abs(a / 2); };
+  T.roomAtPoint = (P, x, y) => {
+    let best = null, area = Infinity;
+    for (const r of P.rooms) { if (!polyIn(x, y, r.outline)) continue; const a = T.polyArea(r.outline); if (a < area) { area = a; best = r; } }
+    return best;
+  };
   T.floorById = (P, id) => P.floors.find((f) => f.id === id);
   T.linkLabel = (P, link) => {
     if (link.label) return link.label;

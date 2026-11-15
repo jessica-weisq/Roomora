@@ -127,7 +127,8 @@ def create_app(
         if s.get("model"):
             out["modelUrl"] = base + s["model"]
         if s.get("panoramas"):
-            out["panoramas"] = s["panoramas"]
+            # kept with the build (a path here) or, from older builds, a link elsewhere
+            out["panoramas"] = {k: (base + v if v.startswith("/") else v) for k, v in s["panoramas"].items()}
         if s.get("error"):
             out["error"] = s["error"]
         return out
@@ -191,6 +192,17 @@ def create_app(
         cached.write_bytes(png)
         store.commit()
         return Response(png, media_type="image/png", headers=headers)
+
+    @app.get("/panorama/{job_id}/{name}")
+    def panorama(job_id: str, name: str) -> FileResponse:
+        m = re.fullmatch(r"([A-Za-z0-9_-]{1,80})\.(jpg|png|webp)", name)
+        path = store.job_dir(_safe_id(job_id, "-")) / "panoramas" / name if m else None
+        if not path or not path.exists():
+            store.reload()
+        if not path or not path.exists():
+            raise HTTPException(404, "No 360° view for that room.")
+        return FileResponse(path, media_type=f"image/{'jpeg' if m.group(2) == 'jpg' else m.group(2)}",
+                            headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
     @app.get("/model/{job_id}.glb")
     def model(job_id: str) -> FileResponse:

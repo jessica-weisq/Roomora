@@ -9,6 +9,9 @@
   # or uncomment them here. The URL is printed by `modal deploy backend/app.py`.
   # VITE_USE_MOCK = "false"
   # VITE_API_URL = "https://YOUR-WORKSPACE--photos-to-3d-api.modal.run"
+  # Street View and the view out of the windows need a Google Maps browser key. Set it in Netlify, not here
+  # (this file is public), then redeploy: Vite builds the key into the site, so it isn't read at run time.
+  # VITE_GOOGLE_MAPS_KEY = "..."
 
 # It's a single-page app: serve index.html for every path so /review, /view etc. survive a refresh.
 [[redirects]]

@@ -93,7 +93,7 @@
       const { root, THREE, scene, camera, renderer, canvas, wallMesh, F, P, s, cs, GW, GH, aniso, alive, cellAt, inPoly, unstick } = o;
       const furnBtn = root.querySelector(".w3-furn");
       const shadows = () => (renderer.shadowMap.needsUpdate = true);
-      const roomOf = (x, y) => P.rooms.find((r) => inPoly(x, y, r.outline)) || null;
+      const roomOf = (x, y) => T.roomAtPoint(P, x, y);
       const walkable = (x, z) => cellAt(x, z) >= 2;
 
       // ---- interface ----

@@ -8,6 +8,11 @@ export interface Room {
   y: number
   width: number
   depth: number
+  /**
+   * Where the room is on the floor plan image, as [x0, y0, x1, y1] fractions of the image (from the vision
+   * model's box round it). The walk-through uses it to put the room on the traced drawing.
+   */
+  box?: [number, number, number, number]
 }
 
 export interface Plan {

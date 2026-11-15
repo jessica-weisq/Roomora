@@ -10,7 +10,8 @@ Photos + floor plan → 3D. The user uploads a floor plan and room photos (and o
 
 Upload any floor plan and room photos (and the address) and the walk-through is built the same way as the sample flat:
 
-- **Walls, doors and windows** are traced from the plan image, or drawn from the measured rooms when the drawing can't be traced.
+- **Rooms** are found by the vision model as boxes on the plan image (the way vision models point at things best), with the scale taken from the dimensions written on the plan. In the walk-through each room then snaps to the space its walls enclose in the traced drawing (doorways closed off), which is what gets bathrooms, en suites and WCs right: they're small, fully walled spaces. A bedroom box that took in its en suite shrinks back to the bedroom.
+- **Walls, doors and windows** are traced from the plan image, or drawn from the measured rooms when the rooms don't sit on the traced walls (screenshots, odd drawings).
 - **Furniture, floors and wall colours** come from each room's photos: when the walk-through opens, every photographed room is furnished automatically (two rooms at a time; the backend keeps each answer, so reopening is quick). Rooms with a 3D scan keep the scan, and a layout arranged by hand with **Arrange furniture** is never replaced.
 - **The view out of the windows** is the nearest Google Street View panorama to the address, and **the sunlight** comes from the south-west. Both are turned to the compass using the plan's north arrow when it has one (`plan.north`).
 
@@ -127,15 +128,9 @@ Each URL must be a **2:1 equirectangular** image. Rooms with a panorama get an "
 
 ### Generating the panoramas with fal
 
-`fal-ai/hunyuan_world` turns one photo into a 1920 × 960 panorama (about $0.15 each). On the **server**:
+The backend does this when `FAL_KEY` is set (in the Modal secret `photos-to-3d`, or in your shell for `local.py`): after the model is built, each room's first photo goes to `fal-ai/hunyuan_world` (about $0.15 a room), several rooms at once. The panoramas are saved with the build and served from `GET /api/panorama/{jobId}/{roomId}.jpg`, because fal's result links are temporary. A room whose panorama fails just doesn't get one.
 
-```js
-import { fal } from "@fal-ai/client"; // reads FAL_KEY from the environment
-const { data } = await fal.subscribe("fal-ai/hunyuan_world", {
-  input: { image_url: bestPhotoOfRoom, prompt: "Seamless 360° panorama of this living room, same style and furniture" },
-});
-panoramas[roomId] = data.image.url;
-```
+To check your key and the model before a full build: `FAL_KEY=... python -m core.panorama some-photo.jpg "Living room"` (from `backend/`). It writes `some-photo-360.jpg` and says whether it's 2:1. Set `FAL_PANORAMA_MODEL` to use another fal model.
 
 Keep `FAL_KEY` on the backend. Anything in the frontend's `VITE_…` variables is visible to every visitor. Pick each room's widest, clearest photo as the input: everything outside it is generated.
 
@@ -168,6 +163,8 @@ Response (types are the ones the walk-through can draw, listed in `backend/core/
 The answer is saved per room, so asking again with the same photos doesn't call the AI again. A server without it answers 501 and the walk-through keeps its starter furniture.
 
 ### 5. `GET /api/depth/{projectId}/{photoId}.png` (optional)
+
+Rooms in the match response may include `box`: `[x0, y0, x1, y1]`, where the room is on the floor plan image as fractions of its width and height. The walk-through uses it to place rooms on the traced drawing.
 
 A photo's depth map for the walk-through's 3D photos: relative inverse depth as a 16-bit number in red (high byte) and green (low byte), 384 px wide. Made with Depth Anything the first time it's asked for, then saved. A server without `onnxruntime` answers 501 and photos stay flat.
 

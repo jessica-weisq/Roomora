@@ -85,7 +85,7 @@
       const SKIRT = 0.14;
       const indoor = (v) => v === 2 || v === 3 || v === 4 || v === 6 || v === 7;
       const inPoly = (x, y, pts) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
-      const roomAt = (cx, cz) => { const x = (cx + 0.5) * M.cell, y = (cz + 0.5) * M.cell; return P.rooms.find((r) => inPoly(x, y, r.outline)) || null; };
+      const roomAt = (cx, cz) => { const x = (cx + 0.5) * M.cell, y = (cz + 0.5) * M.cell; return T.roomAtPoint(P, x, y); };
 
       // ---- wall faces that look into a room ----
       const segs = [], byRect = new Map();

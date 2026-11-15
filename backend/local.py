@@ -55,8 +55,18 @@ def make_app():
     else:
         reconstruct = _reconstructor()
 
+    panorama = None
+    if os.environ.get("FAL_KEY"):
+        try:
+            from core.panorama import make_fal_panorama
+
+            panorama = make_fal_panorama()
+            logging.info("FAL_KEY is set: builds make a 360° view per room with fal.")
+        except ImportError:
+            logging.warning("FAL_KEY is set but fal-client isn't installed (pip install fal-client): no 360° views.")
+
     def start_build(job_id: str, project_id: str) -> None:
-        threading.Thread(target=run_build, args=(store, job_id, project_id, reconstruct), daemon=True).start()
+        threading.Thread(target=run_build, args=(store, job_id, project_id, reconstruct, panorama), daemon=True).start()
 
     which = provider()
     match = match_photos if which else demo_match

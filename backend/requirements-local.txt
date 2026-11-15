@@ -8,6 +8,7 @@ numpy<2
 trimesh
 scipy
 onnxruntime   # 3D photos in the walk-through (depth maps)
+fal-client>=1.0   # 360° views, only used when FAL_KEY is set
 uvicorn
 # for the tests
 pytest

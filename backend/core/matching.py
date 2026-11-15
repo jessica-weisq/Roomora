@@ -50,12 +50,16 @@ TOOL = {
                             "type": "object",
                             "properties": {
                                 "name": {"type": "string", "description": "As labelled, e.g. 'Bedroom 2'. Unique."},
+                                "box_2d": {
+                                    "type": "array", "items": {"type": "integer"},
+                                    "description": "Where the room is on the plan image, inside its walls: [ymin, xmin, ymax, xmax], each 0-1000",
+                                },
                                 "x_m": {"type": "number", "description": "Left edge, metres from the plan's left"},
                                 "y_m": {"type": "number", "description": "Top edge, metres from the plan's top"},
-                                "width_m": {"type": "number"},
-                                "depth_m": {"type": "number"},
+                                "width_m": {"type": "number", "description": "Left to right, from the dimensions written on the plan if there are any"},
+                                "depth_m": {"type": "number", "description": "Top to bottom, from the dimensions written on the plan if there are any"},
                             },
-                            "required": ["name", "x_m", "y_m", "width_m", "depth_m"],
+                            "required": ["name", "box_2d", "width_m", "depth_m"],
                         },
                     },
                 },
@@ -92,10 +96,15 @@ TOOL = {
 
 INSTRUCTIONS = """You are helping turn a property's floor plan and room photos into a 3D model.
 
-1. Read the floor plan. List every labelled room (include hallways and landings if labelled) as an
-   axis-aligned rectangle in metres: x from the plan's left edge, y from its top edge.
-   Use the dimensions written on the plan. If there are none, estimate from typical sizes (a door is
-   about 0.8 m wide). Approximate an L-shaped or irregular room with its bounding rectangle.
+1. Read the floor plan. List every room, including the small ones: every bathroom, en suite, shower
+   room, WC, cloakroom, utility room and labelled cupboard or store, plus hallways and landings.
+   An en suite is a separate room even when it opens off a bedroom: give it its own box, and keep it out
+   of the bedroom's box.
+   For each room give box_2d, its position on the plan image just inside its walls, as
+   [ymin, xmin, ymax, xmax] on a 0-1000 scale across the image. Also give its width (left to right) and
+   depth (top to bottom) in metres, read from the dimensions written on the plan; if there are none,
+   estimate from typical sizes (a door is about 0.8 m wide). Approximate an L-shaped or irregular room
+   with its bounding box. x_m and y_m (its position in metres) are optional.
    If the plan shows several floors, place them side by side, left to right, without overlapping.
    Give rooms with the same type distinct names as labelled (e.g. "Bedroom 1", "Bedroom 2").
    If the plan has a north arrow or compass rose, give the direction it points as north_arrow_deg
@@ -105,6 +114,10 @@ INSTRUCTIONS = """You are helping turn a property's floor plan and room photos i
    identifies one room. If it could be one of several (e.g. two similar bedrooms), set confident to
    false, list the candidates most likely first, and give a short reason a non-expert would understand,
    e.g. "It looks like a bedroom, but it could be either one."
+   Bathrooms, en suites, shower rooms and WCs look alike, so match them on what the plan shows: whether
+   it has a bath or only a shower or just a WC and basin, where its window is, which way the door opens
+   and what's visible through it (a bed through the doorway means an en suite), and its size and shape.
+   If two of them could still fit, set confident to false and list both.
    If a photo isn't of a room in this property (outside, a garden, a street), set room_name to null.
 
 Report everything with the report_layout tool. Every photo index must appear exactly once."""
@@ -125,18 +138,77 @@ def _slug(name: str, taken: set[str]) -> str:
     return slug
 
 
+def _box(value: Any) -> list[float] | None:
+    """box_2d [ymin, xmin, ymax, xmax] on 0-1000 -> [x0, y0, x1, y1] as fractions of the image, or None."""
+    try:
+        ymin, xmin, ymax, xmax = (min(max(float(v), 0.0), 1000.0) / 1000 for v in value[:4])
+    except (TypeError, ValueError):
+        return None
+    if xmax - xmin < 0.005 or ymax - ymin < 0.005:
+        return None
+    return [xmin, ymin, xmax, ymax]
+
+
+def _median(values: list[float]) -> float:
+    s = sorted(values)
+    n = len(s)
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+
+def _place_from_boxes(entries: list[dict[str, Any]]) -> None:
+    """Put rooms in metres using where they are on the drawing (the boxes) and the scale their written sizes give.
+
+    Vision models are much better at pointing at a room on the image than at turning it into coordinates in
+    metres, and small rooms (bathrooms, en suites, WCs) suffer most from the latter. So positions and extents
+    come from the boxes, and metres per image width / height come from the median of each room's written size
+    over its box, which shrugs off the odd misread dimension.
+    """
+    boxed = [e for e in entries if e["box"]]
+    if not boxed:
+        return
+    sx = [e["w"] / (e["box"][2] - e["box"][0]) for e in boxed if e["w"]]
+    sy = [e["d"] / (e["box"][3] - e["box"][1]) for e in boxed if e["d"]]
+    if not sx or not sy:
+        return
+    mx, my = _median(sx), _median(sy)   # metres across the whole image, and down it
+    for e in boxed:
+        x0, y0, x1, y1 = e["box"]
+        e["x"], e["y"], e["w"], e["d"] = x0 * mx, y0 * my, (x1 - x0) * mx, (y1 - y0) * my
+        e["placed"] = True
+
+
 def normalize(raw: dict[str, Any], photo_ids: list[str]) -> dict[str, Any]:
     """Turn the model's tool input into the API's {plan, matches} shape, fixing what we can."""
     plan_in = raw.get("plan") or {}
+    entries: list[dict[str, Any]] = []
+    for r in plan_in.get("rooms") or []:
+        if not isinstance(r, dict):
+            continue
+        box = _box(r.get("box_2d"))
+        num = lambda k: float(r[k]) if isinstance(r.get(k), (int, float)) else None  # noqa: E731
+        e = {"r": r, "box": box, "w": num("width_m"), "d": num("depth_m"), "x": num("x_m"), "y": num("y_m"), "placed": False}
+        if e["w"] is not None and e["w"] <= 0:
+            e["w"] = None
+        if e["d"] is not None and e["d"] <= 0:
+            e["d"] = None
+        entries.append(e)
+    _place_from_boxes(entries)
+    # rooms placed from boxes start at the drawing's corner; shift so the plan starts at 0, 0
+    placed = [e for e in entries if e["placed"]]
+    if placed:
+        ox, oy = min(e["x"] for e in placed), min(e["y"] for e in placed)
+        for e in placed:
+            e["x"] -= ox
+            e["y"] -= oy
+
     rooms: list[dict[str, Any]] = []
     by_name: dict[str, str] = {}
     taken: set[str] = set()
-    for r in plan_in.get("rooms") or []:
-        try:
-            w, d = float(r["width_m"]), float(r["depth_m"])
-            x, y = max(0.0, float(r["x_m"])), max(0.0, float(r["y_m"]))
-        except (KeyError, TypeError, ValueError):
+    for e in entries:
+        r = e["r"]
+        if e["x"] is None or e["y"] is None or not e["w"] or not e["d"]:
             continue
+        w, d, x, y = e["w"], e["d"], max(0.0, e["x"]), max(0.0, e["y"])
         if w <= 0.3 or d <= 0.3:
             continue
         name = str(r.get("name") or "Room").strip()
@@ -144,7 +216,10 @@ def normalize(raw: dict[str, Any], photo_ids: list[str]) -> dict[str, Any]:
         if name.lower() in by_name:  # duplicate label: keep the room, give it a distinct name
             name = f"{name} ({rid.rsplit('-', 1)[-1]})"
         by_name.setdefault(name.lower(), rid)
-        rooms.append({"id": rid, "name": name, "x": round(x, 3), "y": round(y, 3), "width": round(w, 3), "depth": round(d, 3)})
+        room: dict[str, Any] = {"id": rid, "name": name, "x": round(x, 3), "y": round(y, 3), "width": round(w, 3), "depth": round(d, 3)}
+        if e["box"]:
+            room["box"] = [round(v, 4) for v in e["box"]]   # where it is on the plan image, for the walk-through
+        rooms.append(room)
     if not rooms:
         raise ValueError("Couldn't find any rooms on the floor plan. Is it a clear, labelled plan?")
 

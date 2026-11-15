@@ -17,7 +17,8 @@ from .storage import Store
 log = logging.getLogger("photos-to-3d")
 
 Reconstruct = Callable[[list[Path]], Optional[RoomScan]]
-Panorama = Callable[[str, Path], str]
+# (room name, photo) -> the panorama image (bytes), or a URL to it
+Panorama = Callable[[str, Path], "bytes | str"]
 
 
 def run_build(store: Store, job_id: str, project_id: str, reconstruct: Reconstruct | None,
@@ -61,12 +62,29 @@ def run_build(store: Store, job_id: str, project_id: str, reconstruct: Reconstru
         # 5. optional 360° views
         store.set_status(job_id, step=5)
         panoramas: dict[str, str] = {}
-        if panorama:
-            for room_id, paths in by_room.items():
+        if panorama and by_room:
+            from concurrent.futures import ThreadPoolExecutor
+
+            from .panorama import image_extension
+
+            # several rooms at once: each one is a wait on fal, not work here
+            def one(room_id: str) -> tuple[str, "bytes | str | None"]:
                 try:
-                    panoramas[room_id] = panorama(rooms[room_id]["name"], sorted(paths)[0])
+                    return room_id, panorama(rooms[room_id]["name"], sorted(by_room[room_id])[0])
                 except Exception:
                     log.exception("Panorama failed for room %s", room_id)
+                    return room_id, None
+
+            with ThreadPoolExecutor(max_workers=min(4, len(by_room))) as pool:
+                for room_id, result in pool.map(one, list(by_room)):
+                    if isinstance(result, str):
+                        panoramas[room_id] = result
+                    elif result:   # keep the image with the build: fal's links don't last
+                        name = f"{room_id}.{image_extension(result)}"
+                        (out / "panoramas").mkdir(exist_ok=True)
+                        (out / "panoramas" / name).write_bytes(result)
+                        panoramas[room_id] = f"/panorama/{job_id}/{name}"
+            store.commit()
 
         store.set_status(job_id, step=6)
         store.set_status(job_id, state="done", step=7, model=f"/model/{job_id}.glb",

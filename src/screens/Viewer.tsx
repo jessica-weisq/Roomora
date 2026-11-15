@@ -11,8 +11,20 @@ import { TourDialog } from '../viewer/TourDialog'
 import { downloadGlb } from '../lib/exportGlb'
 import { resolvedAssignments, useProject } from '../state/ProjectContext'
 
+/**
+ * The property's name: the start of its address ("24-25 Albion Street, London"), else the floor plan's file name
+ * unless that's an automatic one (a pasted screenshot, a camera or scanner name), else "Your property".
+ */
+function propertyTitle(address: string, fileName?: string): string {
+  const fromAddress = address.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 2).join(', ')
+  if (fromAddress) return fromAddress
+  const name = (fileName ?? '').replace(/\.[^.]+$/, '').trim()
+  const automatic = /^(image|img|screenshot|screen ?shot|scan|photo|pxl|dsc|untitled|download|floor ?plan|plan)(?=[\s_.-]|\d|$)|\d{6,}|\d{4}-\d{2}-\d{2}/i
+  return name && !automatic.test(name) ? name : 'Your property'
+}
+
 export function Viewer() {
-  const { plan, matches, assignments, photos, floorPlan, modelUrl, panoramas, reset } = useProject()
+  const { plan, matches, assignments, photos, floorPlan, modelUrl, panoramas, reset, address } = useProject()
   const navigate = useNavigate()
   const [view, setView] = useState<'3d' | 'plan'>('3d')
   const [selected, setSelected] = useState<string | null>(plan?.rooms[0]?.id ?? null)
@@ -48,7 +60,7 @@ export function Viewer() {
   const current = plan.rooms.find((r) => r.id === selected) ?? plan.rooms[0]
   const currentPhotos = current ? photosByRoom[current.id] ?? [] : []
   const thin = plan.rooms.filter((r) => (photosByRoom[r.id]?.length ?? 0) < 2)
-  const title = floorPlan?.file.name.replace(/\.[^.]+$/, '') ?? 'Your property'
+  const title = propertyTitle(address, floorPlan?.file.name)
   const usedPhotos = Object.values(photosByRoom).reduce((n, list) => n + list.length, 0)
 
   async function onDownload() {

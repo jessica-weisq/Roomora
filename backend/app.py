@@ -48,7 +48,7 @@ gpu_image = (
         f"git clone --recursive https://github.com/naver/mast3r /opt/mast3r && cd /opt/mast3r && git checkout {MAST3R_COMMIT}",
         "pip install -r /opt/mast3r/requirements.txt -r /opt/mast3r/dust3r/requirements.txt 'numpy<2'",
     )
-    .pip_install("pillow-heif", "fal-client", "huggingface_hub")
+    .pip_install("pillow-heif", "fal-client>=1.0", "httpx", "huggingface_hub")
     .env({"PYTHONPATH": "/opt/mast3r", "HF_HOME": "/opt/hf"})
     # Bake the weights into the image so cold starts don't download 2.7 GB
     .run_commands(f"python -c \"from huggingface_hub import snapshot_download; snapshot_download('{WEIGHTS}')\"")

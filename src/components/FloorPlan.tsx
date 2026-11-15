@@ -27,7 +27,8 @@ export function FloorPlan({ plan, fills = {}, onSelect, sublabels, labels = 'ful
       role={onSelect ? 'group' : 'img'}
       aria-label={ariaLabel ?? 'Floor plan'}
     >
-      {plan.rooms.map((r) => {
+      {/* big rooms first, so small ones drawn inside them (an en suite in a bedroom's corner) stay on top */}
+      {[...plan.rooms].sort((a, b) => b.width * b.depth - a.width * a.depth).map((r) => {
         const interactive = !!onSelect
         const tight = r.width < 2.6
         const label =

@@ -90,11 +90,22 @@
         { n: b.x1 - b.x0, at: (k) => [b.x0 + k, b.y0], d: [0, -1] }, { n: b.x1 - b.x0, at: (k) => [b.x0 + k, b.y1 - 1], d: [0, 1] },
         { n: b.y1 - b.y0, at: (k) => [b.x0, b.y0 + k], d: [-1, 0] }, { n: b.y1 - b.y0, at: (k) => [b.x1 - 1, b.y0 + k], d: [1, 0] },
       ];
+      // windows centred on each stretch of outside wall: one per 3.2 m or so, never more than half the wall
       for (const run of runs) {
-        for (let k = 4; k + winCells < run.n - 4; k += gap) {
-          let ok = true;
-          for (let t = 0; t < winCells && ok; t++) { const [x, y] = run.at(k + t); ok = outsideBeyond(x, y, run.d[0], run.d[1]); }
-          if (ok) for (let t = 0; t < winCells; t++) { const [x, y] = run.at(k + t); set(x, y, 0); }
+        let k = 4;
+        while (k < run.n - 4) {
+          const isOut = (j) => { const [x, y] = run.at(j); return outsideBeyond(x, y, run.d[0], run.d[1]); };
+          if (!isOut(k)) { k++; continue; }
+          let e = k; while (e < run.n - 4 && isOut(e)) e++;
+          const L = e - k;
+          if (L >= winCells + 4) {
+            const n = Math.max(1, Math.min(Math.floor((L * cm) / 3.2), Math.floor(L / (winCells * 2))));
+            for (let i = 0; i < n; i++) {
+              const mid = k + Math.round((L * (i + 0.5)) / n), s0 = mid - (winCells >> 1);
+              for (let t = 0; t < winCells; t++) { const [x, y] = run.at(s0 + t); set(x, y, 0); }
+            }
+          }
+          k = e;
         }
       }
     });
@@ -102,24 +113,279 @@
     return { tr: { w: GW * CELL, h: GH * CELL, GW, GH, CELL, g }, mpp, origin: [margin * mpp, margin * mpp] };
   }
 
-  // walls traced from the plan image, if its outline matches the room sizes
+  // ---- walls traced from the plan image, lined up with the rooms the AI measured ----
+  // The AI's rooms (metres) and the traced drawing (pixels) never line up exactly: the AI's positions are
+  // estimates, and screenshots carry borders, labels and dimension lines. So: find the scale and offset that
+  // put the most room edges on traced walls, then snap each room edge to the nearest wall line. If the rooms
+  // still don't sit on the walls, the trace isn't trusted and the walls are drawn from the rooms instead,
+  // because walls through the middle of rooms and glass round the edges are worse than clean, simple walls.
+  const TRACE_MIN = 0.55;   // share of room-edge length that must lie on traced walls
+
+  // distance, in cells, from every cell to the nearest wall or edge of the building (capped). The building's
+  // edge counts because windows, glazing and terraces are drawn with thin lines, not solid walls.
+  function wallDistance(tr) {
+    const { GW, GH, CELL, g } = tr;
+    const CAP = 12, dist = new Uint8Array(GW * GH).fill(CAP), queue = [];
+    const edgeOfBuilding = (i) => {
+      if (g[i] !== 0) return false;
+      const x = i % GW, y = (i / GW) | 0;
+      return (x > 0 && g[i - 1] >= 2) || (x < GW - 1 && g[i + 1] >= 2) || (y > 0 && g[i - GW] >= 2) || (y < GH - 1 && g[i + GW] >= 2);
+    };
+    for (let i = 0; i < g.length; i++) if (g[i] === 1 || edgeOfBuilding(i)) { dist[i] = 0; queue.push(i); }
+    if (!queue.length) return null;
+    for (let q = 0; q < queue.length; q++) {
+      const i = queue[q], d = dist[i] + 1;
+      if (d >= CAP) continue;
+      const x = i % GW, y = (i / GW) | 0;
+      if (x > 0 && dist[i - 1] > d) { dist[i - 1] = d; queue.push(i - 1); }
+      if (x < GW - 1 && dist[i + 1] > d) { dist[i + 1] = d; queue.push(i + 1); }
+      if (y > 0 && dist[i - GW] > d) { dist[i - GW] = d; queue.push(i - GW); }
+      if (y < GH - 1 && dist[i + GW] > d) { dist[i + GW] = d; queue.push(i + GW); }
+    }
+    return (px, py) => { const cx = Math.floor(px / CELL), cy = Math.floor(py / CELL); return cx < 0 || cy < 0 || cx >= GW || cy >= GH ? CAP : dist[cy * GW + cx]; };
+  }
+
+  // The spaces the walls enclose, with doorways closed off: walls are thickened by about half a doorway, so a
+  // room's openings seal and each room becomes its own patch of floor. Bathrooms, en suites and WCs are small,
+  // fully walled spaces, which is exactly what this finds well (and what a rough box round them gets wrong).
+  function enclosedSpaces(tr, mpp) {
+    const { GW, GH, CELL, g } = tr;
+    const k = Math.max(1, Math.round(0.5 / (CELL * mpp)));
+    const sealed = new Uint8Array(GW * GH);
+    for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+      if (g[y * GW + x] !== 1) continue;
+      for (let dy = -k; dy <= k; dy++) for (let dx = -k; dx <= k; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && ny >= 0 && nx < GW && ny < GH && dx * dx + dy * dy <= k * k) sealed[ny * GW + nx] = 1;
+      }
+    }
+    const lab = new Int32Array(GW * GH).fill(-1), spaces = [], st = [];
+    for (let s = 0; s < GW * GH; s++) {
+      if (lab[s] >= 0 || sealed[s] || g[s] < 2) continue;
+      const id = spaces.length, sp = { x0: GW, y0: GH, x1: -1, y1: -1, n: 0 };
+      lab[s] = id; st.push(s);
+      while (st.length) {
+        const i = st.pop(), x = i % GW, y = (i / GW) | 0;
+        sp.n++; if (x < sp.x0) sp.x0 = x; if (x > sp.x1) sp.x1 = x; if (y < sp.y0) sp.y0 = y; if (y > sp.y1) sp.y1 = y;
+        for (const j of [x > 0 ? i - 1 : -1, x < GW - 1 ? i + 1 : -1, y > 0 ? i - GW : -1, y < GH - 1 ? i + GW : -1])
+          if (j >= 0 && lab[j] < 0 && !sealed[j] && g[j] >= 2) { lab[j] = id; st.push(j); }
+      }
+      spaces.push(sp);
+    }
+    // grow each space back out to its walls: side by side, only as far as the floor goes (at most the
+    // thickening), because a side bounded by a window or open edge was never trimmed in the first place
+    const floorAt = (x, y) => x >= 0 && y >= 0 && x < GW && y < GH && g[y * GW + x] >= 2;
+    // for each side: along every row (or column) of the space, where its floor ends on that side, plus how much
+    // further the floor goes (at most the thickening); the side sits at the median of those, so a doorway's
+    // bulge or a notch doesn't drag it
+    const sideAt = (sp, dx, dy) => {
+      const vals = [];
+      if (dx) for (let y = sp.y0; y <= sp.y1; y++) {
+        let x = -1;
+        if (dx < 0) { for (let i = sp.x0; i <= sp.x1; i++) if (lab[y * GW + i] === sp.id) { x = i; break; } }
+        else { for (let i = sp.x1; i >= sp.x0; i--) if (lab[y * GW + i] === sp.id) { x = i; break; } }
+        if (x < 0) continue;
+        let n = 0; while (n < k && floorAt(x + dx * (n + 1), y)) n++;
+        vals.push(dx < 0 ? x - n : x + 1 + n);
+      } else for (let x = sp.x0; x <= sp.x1; x++) {
+        let y = -1;
+        if (dy < 0) { for (let i = sp.y0; i <= sp.y1; i++) if (lab[i * GW + x] === sp.id) { y = i; break; } }
+        else { for (let i = sp.y1; i >= sp.y0; i--) if (lab[i * GW + x] === sp.id) { y = i; break; } }
+        if (y < 0) continue;
+        let n = 0; while (n < k && floorAt(x, y + dy * (n + 1))) n++;
+        vals.push(dy < 0 ? y - n : y + 1 + n);
+      }
+      vals.sort((p, q) => p - q);
+      return vals[vals.length >> 1];
+    };
+    spaces.forEach((sp, id) => {
+      sp.id = id;
+      sp.px = [sideAt(sp, -1, 0) * CELL, sideAt(sp, 0, -1) * CELL, sideAt(sp, 1, 0) * CELL, sideAt(sp, 0, 1) * CELL];
+    });
+    return { lab, spaces, GW, GH, CELL };
+  }
+  const areaOf = (b) => Math.max(0, b[2] - b[0]) * Math.max(0, b[3] - b[1]);
+  const iou = (a, b) => { const i = areaOf([Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.min(a[3], b[3])]); return i / (areaOf(a) + areaOf(b) - i || 1); };
+
+  // From rooms roughly placed on the drawing (r.px), finish the fit: each room takes the enclosed space it
+  // clearly matches, then every edge snaps to the nearest wall line. Returns the share of edge length on walls.
+  function finishFit(tr, rooms, mpp, near) {
+    const { CELL } = tr;
+    // 1. enclosed spaces, matched one-to-one, best matches first
+    const E = enclosedSpaces(tr, mpp), pairs = [];
+    rooms.forEach((r, ri) => {
+      if (r.type === "terrace") return;
+      const [x0, y0, x1, y1] = r.px, tally = new Map();
+      for (let y = Math.max(0, Math.floor(y0 / CELL)); y < Math.min(E.GH, Math.ceil(y1 / CELL)); y++)
+        for (let x = Math.max(0, Math.floor(x0 / CELL)); x < Math.min(E.GW, Math.ceil(x1 / CELL)); x++) {
+          const l = E.lab[y * E.GW + x]; if (l >= 0) tally.set(l, (tally.get(l) || 0) + 1);
+        }
+      const mx = Math.floor((x0 + x1) / 2 / CELL), my = Math.floor((y0 + y1) / 2 / CELL);
+      const atMiddle = mx >= 0 && my >= 0 && mx < E.GW && my < E.GH ? E.lab[my * E.GW + mx] : -1;
+      tally.forEach((_, l) => {
+        const sp = E.spaces[l], ratio = areaOf(sp.px) / (areaOf(r.px) || 1);
+        // a space much bigger than the room is open-plan, or the room's walls have gaps: don't take it
+        if (ratio > 1.8) return;
+        // each side may move in a good way (a box that swallowed an en suite shrinks back), but only a little
+        // way out: a box is rarely too small by much, so a space reaching far past it is a different room
+        const w = x1 - x0, h = y1 - y0, outW = Math.max(0.5 / mpp, 0.2 * w), outH = Math.max(0.5 / mpp, 0.2 * h);
+        const [s0, t0, s1, t1] = sp.px;
+        if (x0 - s0 > outW || s1 - x1 > outW || y0 - t0 > outH || t1 - y1 > outH) return;
+        if (s0 - x0 > 0.45 * w || x1 - s1 > 0.45 * w || t0 - y0 > 0.45 * h || y1 - t1 > 0.45 * h) return;
+        let score = iou(r.px, sp.px);
+        // a small room's box can be off by a good share of its size: the space under the box's middle, if it's
+        // about the same size, is still the room
+        if (l === atMiddle && ratio >= 0.4) score = Math.max(score, 0.5) + 0.1;
+        if (score >= 0.5) pairs.push({ ri, l, score });
+      });
+    });
+    pairs.sort((a, b) => b.score - a.score);
+    const usedRoom = new Set(), usedSpace = new Set();
+    let matched = 0;
+    for (const p of pairs) {
+      if (usedRoom.has(p.ri) || usedSpace.has(p.l)) continue;
+      usedRoom.add(p.ri); usedSpace.add(p.l); matched++;
+      rooms[p.ri].px = E.spaces[p.l].px.slice();
+    }
+    // 2. snap each edge to the wall line nearest it
+    const lineScore = (horiz, at, from, to) => {
+      const n = Math.max(2, Math.round(Math.abs(to - from) / CELL)); let hit = 0;
+      for (let k = 0; k <= n; k++) { const t = from + ((to - from) * k) / n; if ((horiz ? near(t, at) : near(at, t)) <= 1) hit++; }
+      return hit / (n + 1);
+    };
+    const minPx = 1 / mpp, reach = 0.45 / mpp;
+    let total = 0, onWall = 0;
+    rooms.forEach((r) => {
+      let [rx0, ry0, rx1, ry1] = r.px;
+      const snap = (horiz, at, from, to, lo, hi) => {
+        let bestAt = at, bestS = lineScore(horiz, at, from, to);
+        const base = bestS;
+        for (let d = -reach; d <= reach; d += CELL / 2) {
+          const a = at + d; if (a < lo || a > hi) continue;
+          const s = lineScore(horiz, a, from, to);
+          if (s > bestS + 1e-9 || (Math.abs(s - bestS) < 1e-9 && Math.abs(d) < Math.abs(bestAt - at))) { bestS = s; bestAt = a; }
+        }
+        return bestS >= base + 0.15 ? [bestAt, bestS] : [at, base];
+      };
+      const sides = [];
+      let s;
+      [ry0, s] = snap(true, ry0, rx0, rx1, -Infinity, ry1 - minPx); sides.push([s, rx1 - rx0]);
+      [ry1, s] = snap(true, ry1, rx0, rx1, ry0 + minPx, Infinity); sides.push([s, rx1 - rx0]);
+      [rx0, s] = snap(false, rx0, ry0, ry1, -Infinity, rx1 - minPx); sides.push([s, ry1 - ry0]);
+      [rx1, s] = snap(false, rx1, ry0, ry1, rx0 + minPx, Infinity); sides.push([s, ry1 - ry0]);
+      sides.forEach(([sc, len]) => { onWall += sc * len; total += len; });
+      r.px = [rx0, ry0, rx1, ry1];
+      r.area = (rx1 - rx0) * (ry1 - ry0);
+    });
+    return { quality: total ? onWall / total : 0, matched };
+  }
+
+  // Rooms with boxes from the vision model: put them straight on the drawing; the scale comes from their
+  // sizes in metres over their sizes on the drawing.
+  function alignFromBoxes(tr, plan, rooms) {
+    const near = wallDistance(tr);
+    if (!near) return null;
+    const W = tr.w, H = tr.h, ratios = [];   // the boxes are fractions of the image, which the trace keeps the shape of
+    rooms.forEach((r) => {
+      const [bx0, by0, bx1, by1] = r.src.box;
+      r.px = [bx0 * W, by0 * H, bx1 * W, by1 * H];
+      if (r.px[2] - r.px[0] > 4) ratios.push(r.src.width / (r.px[2] - r.px[0]));
+      if (r.px[3] - r.px[1] > 4) ratios.push(r.src.depth / (r.px[3] - r.px[1]));
+    });
+    if (!ratios.length) return null;
+    ratios.sort((a, b) => a - b);
+    const mpp = ratios[ratios.length >> 1];
+    const offs = rooms.map((r) => [r.px[0] - r.src.x / mpp, r.px[1] - r.src.y / mpp]);
+    const med = (k) => offs.map((o) => o[k]).sort((a, b) => a - b)[offs.length >> 1];
+    const fit = finishFit(tr, rooms, mpp, near);
+    return { mpp, ox: med(0), oy: med(1), quality: fit.quality, matched: fit.matched, how: "boxes" };
+  }
+
+  // Rooms in metres only: search for the scale and offset that put the most room edges on traced walls.
+  function alignToTrace(tr, plan, rooms) {
+    const { GW, GH, CELL, g } = tr;
+    const near = wallDistance(tr);
+    if (!near) return null;
+    // points along every room edge, in metres
+    const samples = (step) => {
+      const out = [];
+      rooms.forEach((r) => {
+        const { x, y, width: w, depth: d } = r.src;
+        [[x, y, x + w, y], [x, y + d, x + w, y + d], [x, y, x, y + d], [x + w, y, x + w, y + d]].forEach(([ax, ay, bx, by]) => {
+          const n = Math.max(2, Math.round(Math.hypot(bx - ax, by - ay) / step));
+          for (let k = 0; k <= n; k++) out.push([ax + ((bx - ax) * k) / n, ay + ((by - ay) * k) / n]);
+        });
+      });
+      return out;
+    };
+    const fine = samples(0.12), coarse = samples(0.4);
+    const score = (pts, mpp, ox, oy, tol) => { let hit = 0; for (const [mx, my] of pts) if (near(ox + mx / mpp, oy + my / mpp) <= tol) hit++; return hit / pts.length; };
+    // first guess: the building's outline matched to the plan's size
+    let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+    for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) if (g[y * GW + x]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    if (x1 < 0) return null;
+    const bw = (x1 - x0 + 1) * CELL, bh = (y1 - y0 + 1) * CELL;
+    const guess = (plan.width / bw + plan.depth / bh) / 2;
+    let best = { s: 0 };
+    const scales = (m, lo, hi, step) => { const out = []; for (let k = lo; k <= hi + 1e-9; k += step) out.push(m * k); return out; };
+    const search = (mpps, cxPx, cyPx, range, stepM, pts, tol) => {
+      for (const mpp of mpps) {
+        const step = stepM / mpp, R = range / mpp;
+        const bx = cxPx - plan.width / 2 / mpp, by = cyPx - plan.depth / 2 / mpp;
+        for (let dx = -R; dx <= R + 1e-6; dx += step) for (let dy = -R; dy <= R + 1e-6; dy += step) {
+          const s = score(pts, mpp, bx + dx, by + dy, tol);
+          if (s > best.s) best = { s, mpp, ox: bx + dx, oy: by + dy };
+        }
+      }
+    };
+    const cx = ((x0 + x1 + 1) / 2) * CELL, cy = ((y0 + y1 + 1) / 2) * CELL;
+    search(scales(guess, 0.85, 1.15, 0.025), cx, cy, 1.5, 0.25, coarse, 2);
+    if (best.s < 0.5) search(scales(guess, 0.5, 1.6, 0.05), cx, cy, Math.max(plan.width, plan.depth) * 0.6, 0.5, coarse, 3);
+    if (!best.mpp) return null;
+    const b0 = best;
+    best = { s: 0 };
+    for (const mpp of scales(b0.mpp, 0.97, 1.03, 0.005)) {
+      const cxp = b0.ox + plan.width / 2 / b0.mpp, cyp = b0.oy + plan.depth / 2 / b0.mpp;
+      const bx = cxp - plan.width / 2 / mpp, by = cyp - plan.depth / 2 / mpp, R = 0.3 / mpp;
+      for (let dx = -R; dx <= R + 1e-6; dx += CELL) for (let dy = -R; dy <= R + 1e-6; dy += CELL) {
+        const s = score(fine, mpp, bx + dx, by + dy, 1);
+        if (s > best.s) best = { s, mpp, ox: bx + dx, oy: by + dy };
+      }
+    }
+    const { mpp, ox, oy } = best;
+    rooms.forEach((r) => { r.px = [ox + r.src.x / mpp, oy + r.src.y / mpp, ox + (r.src.x + r.src.width) / mpp, oy + (r.src.y + r.src.depth) / mpp]; });
+    const fit = finishFit(tr, rooms, mpp, near);
+    return { mpp, ox, oy, quality: fit.quality, matched: fit.matched, fit: best.s, how: "search" };
+  }
+
   async function tracedModel(url, plan, rooms) {
     const U = T.uploadsInternals;
     const img = await T.loadImage(url);
     const tr = await U.tracePlan(img);
-    let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
-    for (let y = 0; y < tr.GH; y++) for (let x = 0; x < tr.GW; x++) if (tr.g[y * tr.GW + x]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
-    if (x1 < 0) return null;
-    const bw = (x1 - x0 + 1) * tr.CELL, bh = (y1 - y0 + 1) * tr.CELL;
-    const mx = plan.width / bw, my = plan.depth / bh;
-    if (Math.abs(mx - my) / ((mx + my) / 2) > 0.25) return null;   // the drawing doesn't match the measured rooms
-    const mpp = (mx + my) / 2, ox = x0 * tr.CELL, oy = y0 * tr.CELL;
-    rooms.forEach((r) => {
-      r.px = [ox + r.src.x / mpp, oy + r.src.y / mpp, ox + (r.src.x + r.src.width) / mpp, oy + (r.src.y + r.src.depth) / mpp];
-      r.area = (r.px[2] - r.px[0]) * (r.px[3] - r.px[1]);
-    });
-    return { tr, mpp, origin: [ox * mpp, oy * mpp], image: true };
+    const copy = () => rooms.map((r) => Object.assign({}, r, { src: Object.assign({}, r.src) }));
+    // boxes from the vision model first; the metre-only search if they fit worse (or there aren't any)
+    let a = null, placed = null;
+    if (rooms.length && rooms.every((r) => Array.isArray(r.src.box))) { const rs = copy(); a = alignFromBoxes(tr, plan, rs); placed = rs; }
+    if (!a || a.quality < TRACE_MIN) {
+      const rs = copy(), b = alignToTrace(tr, plan, rs);
+      if (b && (!a || b.quality > a.quality)) { a = b; placed = rs; }
+    }
+    if (!a || a.quality < TRACE_MIN) {
+      console.info(`Floor plan: walls drawn from the rooms (the traced drawing matched ${a ? Math.round(a.quality * 100) : 0}% of room edges)`);
+      return null;
+    }
+    rooms.forEach((r, i) => { r.px = placed[i].px; r.area = placed[i].area; });
+    console.info(`Floor plan: traced walls used (${Math.round(a.quality * 100)}% of room edges on walls; ${a.matched} of ${rooms.length} rooms matched to walled spaces; placed by ${a.how})`);
+    return { tr, mpp: a.mpp, origin: [a.ox * a.mpp, a.oy * a.mpp], image: true, quality: a.quality };
   }
+
+  // indoor floor area of the built flat, in square metres (terraces not included)
+  function floorArea(model) {
+    const g = T.decodeGrid(model.grid), cellM = model.cell * model.metresPerPx;
+    let n = 0; for (let i = 0; i < g.length; i++) if (g[i] >= 2 && g[i] !== 5) n++;
+    return n * cellM * cellM;
+  }
+  T.vedutaInternals = { alignToTrace, alignFromBoxes, tracedModel, enclosedSpaces, wallDistance, finishFit, syntheticModel: (...a) => syntheticModel(...a), autoViews: (...a) => autoViews(...a) };
 
   T.fromVeduta = async function (project) {
     const U = T.uploadsInternals;
@@ -130,6 +396,7 @@
     if (project.planImage && project.planIsImage) { try { built = await tracedModel(project.planImage, plan, rooms); } catch { built = null; } }
     if (!built) built = syntheticModel(plan, rooms);
     const model = U.buildModel(built.tr, rooms, built.mpp);
+    model.windows = "punched";   // ordinary windows (wall below the sill and above the head), not floor-to-ceiling glass
     const near = (a, b) => !(a.px[2] + 8 < b.px[0] || b.px[2] + 8 < a.px[0] || a.px[3] + 8 < b.px[1] || b.px[3] + 8 < a.px[1]);
     const photos = project.photos || {}, panos = project.panoramas || {};
     const scanned = (id) => project.modelUrl && (photos[id] || []).length > 0;
@@ -157,7 +424,7 @@
     const property = {
       id: project.projectId || "veduta",
       address: project.title || "Your property",
-      subtitle: `${rooms.length} rooms, about ${Math.round(area)} sq m`,
+      subtitle: `${rooms.length} rooms, about ${Math.round(floorArea(model) || area)} sq m`,
       streetAddress: project.address || "",
       location: {},
       north: Number.isFinite(plan.north) ? plan.north : undefined,   // from the plan's north arrow, if it has one
@@ -166,7 +433,7 @@
       entryRoom: entry, startRoom: start,
       floors: [{ id: "plan", name: "Floor plan", plan: built.image ? project.planImage : null, planSize: { w: built.tr.w, h: built.tr.h } }],
       rooms: outRooms, model,
-      furnishing: rooms.filter((r) => !scanned(r.id)).flatMap((r) => U.starter(r, r.type, built.mpp)),
+      furnishing: rooms.flatMap((r) => U.starter(r, r.type, built.mpp)),
     };
     try { autoViews(property); } catch (e) { console.warn("Viewpoints couldn’t be worked out", e); }
     return property;
@@ -192,27 +459,36 @@
       // a clear place to stand near (x, y): nudged towards the middle of the room until it's off the walls
       const spot = (x, y) => { for (let k = 0; k <= 10; k++) { const t = k * 0.06, px = x + (cx - x) * t, py = y + (cy - y) * t; if (clear(px, py)) return [px, py]; } return null; };
       const add = (label, at, look, pitch) => { if (at) views.push({ label, x: Math.round(at[0]), y: Math.round(at[1]), deg: look(at), pitch }); };
+      // can you see from a to b without a wall in the way?
+      const sees = (a, b) => { const n = Math.max(2, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / (C / 2))); for (let k = 0; k <= n; k++) if (!isFloor(a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n)) return false; return true; };
+      // the room's middle, or the nearest floor to it (an L-shaped room's middle can be in a wall)
+      let mid = [cx, cy];
+      if (!clear(cx, cy)) for (let r = C; r < Math.min(x1 - x0, y1 - y0) / 2 && !clear(mid[0], mid[1]); r += C)
+        for (let a = 0; a < 16; a++) { const px = cx + Math.cos((a * Math.PI) / 8) * r, py = cy + Math.sin((a * Math.PI) / 8) * r; if (clear(px, py)) { mid = [px, py]; break; } }
 
       // doorways: places where the floor runs straight through the room's edge
       const sides = [{ n: [0, -1], ax: "x", e: y0 }, { n: [0, 1], ax: "x", e: y1 }, { n: [-1, 0], ax: "y", e: x0 }, { n: [1, 0], ax: "y", e: x1 }];
-      let door = null;
+      const doors = [];
       for (const s of sides) {
         const lo = s.ax === "x" ? x0 : y0, hi = s.ax === "x" ? x1 : y1;
         let run = 0;
-        for (let t = lo + m(0.25); t <= hi - m(0.25); t += C) {
-          let open = true;
+        for (let t = lo + m(0.25); t <= hi - m(0.25) + C; t += C) {
+          let open = t <= hi - m(0.25);
           for (let d = -m(0.45); d <= m(0.45) && open; d += C / 2) {
             const px = s.ax === "x" ? t : s.e + s.n[0] * d, py = s.ax === "x" ? s.e + s.n[1] * d : t;
             if (!isFloor(px, py)) open = false;
           }
-          run = open ? run + C : 0;
-          if (run >= m(0.6) && (!door || run > door.len)) door = { len: run, mid: t - run / 2 + C / 2, s };
+          if (open) run += C;
+          else { if (run >= m(0.6)) doors.push({ len: run, mid: t - run / 2 - C / 2, s }); run = 0; }
         }
       }
-      if (door) {
-        const { s, mid } = door;
-        const at = spot(s.ax === "x" ? mid : s.e - s.n[0] * m(0.7), s.ax === "x" ? s.e - s.n[1] * m(0.7) : mid);
-        add("From the doorway", at, (p) => facing(p[0], p[1], cx, cy));
+      doors.sort((a, b) => b.len - a.len);
+      // the first doorway you can stand just inside and see the room from
+      let door = null;
+      for (const d of doors) {
+        const { s, mid: t } = d;
+        const at = spot(s.ax === "x" ? t : s.e - s.n[0] * m(0.9), s.ax === "x" ? s.e - s.n[1] * m(0.9) : t);
+        if (at && sees(at, mid)) { door = d; add("From the doorway", at, (p) => facing(p[0], p[1], mid[0], mid[1])); break; }
       }
 
       // windows: the longest run of glass on this room's edge
@@ -224,7 +500,7 @@
         const dist = [[win.y - y0, [0, -1]], [y1 - win.y, [0, 1]], [win.x - x0, [-1, 0]], [x1 - win.x, [1, 0]]].sort((a, b) => a[0] - b[0]);
         const n = dist[0][1];   // outward, towards the window
         const from = spot(win.x - n[0] * m(1.0), win.y - n[1] * m(1.0));
-        add("From the window", from, (p) => facing(p[0], p[1], p[0] - n[0], p[1] - n[1]));
+        if (from && sees(from, mid)) add("From the window", from, (p) => facing(p[0], p[1], mid[0], mid[1]));
         const out = spot(win.x - n[0] * m(0.7), win.y - n[1] * m(0.7));
         add("Looking outside", out, (p) => facing(p[0], p[1], p[0] + n[0], p[1] + n[1]), 0);
       }
@@ -233,8 +509,10 @@
       if (W >= 3 && D >= 3) {
         const ref = door ? [door.s.ax === "x" ? door.mid : door.s.e, door.s.ax === "x" ? door.s.e : door.mid] : win ? [win.x, win.y] : [x0, y0];
         const corners = [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].sort((a, b) => Math.hypot(b[0] - ref[0], b[1] - ref[1]) - Math.hypot(a[0] - ref[0], a[1] - ref[1]));
-        const [kx, ky] = corners[0], k = m(0.8);
-        add("From the far corner", spot(kx + Math.sign(cx - kx) * k, ky + Math.sign(cy - ky) * k), (p) => facing(p[0], p[1], cx, cy));
+        for (const [kx, ky] of corners.slice(0, 2)) {
+          const at = spot(kx + Math.sign(cx - kx) * m(0.8), ky + Math.sign(cy - ky) * m(0.8));
+          if (at && sees(at, mid)) { add("From the far corner", at, (p) => facing(p[0], p[1], mid[0], mid[1])); break; }
+        }
       }
       if (views.length) r.views = views;
     }
@@ -315,9 +593,27 @@
   function loadScript(src) {
     return new Promise((resolve, reject) => { const s = document.createElement("script"); s.src = src; s.onload = resolve; s.onerror = reject; document.head.appendChild(s); });
   }
+  // The raw MASt3R scans are rough (torn surfaces, stray fragments), so they're off unless asked for.
+  let showScans = false;
+  try { showScans = localStorage.getItem("tour-scans") === "on"; } catch (e) {}
+  function addScanButton() {
+    const style = document.querySelector(".view-walk .w3-style");
+    if (!T.vedutaScan || !style || style.querySelector(".w3-scans")) return;
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "w3-deco w3-scans";
+    const label = () => { b.textContent = showScans ? "Hide 3D scan" : "Show 3D scan"; b.setAttribute("aria-pressed", String(showScans)); };
+    label();
+    b.addEventListener("click", () => {
+      showScans = !showScans; label();
+      try { localStorage.setItem("tour-scans", showScans ? "on" : "off"); } catch (e) {}
+      const w3 = T.__w3;
+      if (w3 && w3.scans) { w3.scans.visible = showScans; w3.renderer.shadowMap.needsUpdate = true; } else if (showScans) placeScans();
+    });
+    style.insertBefore(b, style.querySelector("p"));
+  }
   async function placeScans() {
     const scan = T.vedutaScan, w3 = T.__w3;
-    if (!scan || !w3) return;
+    if (!scan || !w3 || !showScans) return;
     const THREE = w3.THREE;
     if (!scanLoading) scanLoading = (async () => {
       if (!THREE.GLTFLoader) await loadScript(new URL("vendor/GLTFLoader-r128.js", document.baseURI).href);
@@ -335,6 +631,7 @@
     const g = scanScene.clone();
     g.position.set(scan.origin[0], 0, scan.origin[1]);
     w3.scene.add(g);
+    w3.scans = g;
     w3.renderer.shadowMap.needsUpdate = true;
   }
 
@@ -395,7 +692,7 @@
     autoStarted = true;
     if (arrangedByHand()) return;
     const patched = (T.state && T.state.rooms) || {};
-    const todo = T.P.rooms.filter((r) => !r.scanned && !(patched[r.id] && patched[r.id].furnishing) && r.media.some((m) => m.type === "photo"));
+    const todo = T.P.rooms.filter((r) => !(patched[r.id] && patched[r.id].furnishing) && r.media.some((m) => m.type === "photo"));
     if (!todo.length) return;
     let next = 0, finished = 0;
     const results = {};
@@ -435,5 +732,5 @@
     if (pos && T.walkTo) T.walkTo(pos.x, pos.y, (pos.heading * 180) / Math.PI);   // stay where you were standing
     say(`Furnished ${rooms} room${rooms > 1 ? "s" : ""} from your photos: ${pieces} pieces${pictures ? ` and ${pictures} picture${pictures > 1 ? "s" : ""}` : ""}, placed approximately. Use Arrange furniture to move them.`);
   }
-  T.on("tour:built", () => { setTimeout(() => { addFurnishButton(); showNote(); placeScans(); autoFurnish(); }, 0); }, { persistent: true });
+  T.on("tour:built", () => { setTimeout(() => { addFurnishButton(); addScanButton(); showNote(); placeScans(); autoFurnish(); }, 0); }, { persistent: true });
 })();

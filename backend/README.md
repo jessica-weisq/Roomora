@@ -9,6 +9,7 @@ GET  /build/:id   progress; when done, the model URL (and 360° views if enabled
 GET  /model/:id.glb
 POST /furnish     a room's photos → furniture, floor, wall colour and pictures, for the walk-through   (Gemini or Claude vision)
 GET  /depth/:project/:photo.png   a photo's depth map, for the walk-through's 3D photos     (Depth Anything, CPU)
+GET  /panorama/:job/:room.jpg     a room's 360° view, saved with the build                  (fal, when FAL_KEY is set)
 ```
 
 ## How a build works
