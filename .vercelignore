@@ -1,0 +1,10 @@
+# Vercel only needs the frontend. Keeps `npx vercel` uploads small.
+backend/
+house-tour/
+house-tour8/
+test-assets/
+track-c-exterior/
+tools/
+Roomora/
+# Vercel's own environment variables are the source of truth, not your local overrides
+.env.local
