@@ -68,38 +68,32 @@
   };
 
   // ---- Looking around ------------------------------------------------------
-  // Mouse: moving the pointer turns the view (no button needed); keeping it near the left or right
-  // edge keeps turning. Touch and pen: drag the scene. look(dYaw, dPitch) is called with radians,
-  // where +yaw turns left and +pitch looks up. Call edge() each frame for the edge-turn speed (-1..1).
+  // Grab and drag the scene to look around, with the mouse (left button) as with a finger: the open-hand cursor
+  // closes while you drag. look(dYaw, dPitch) is called with radians, where +yaw turns left and +pitch looks up.
+  // dragged() says whether the last press turned into a drag, so a click handler can ignore it.
   T.attachLook = function (el, look, opts = {}) {
     const k = opts.sensitivity || 0.0032;
-    let drag = null, edge = 0;
+    let drag = null, lastMoved = 0;
     el.addEventListener("pointerdown", (e) => {
-      if (e.pointerType === "mouse") return;
-      drag = { x: e.clientX, y: e.clientY, moved: 0 };
-      el.setPointerCapture(e.pointerId);
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      drag = { x: e.clientX, y: e.clientY, moved: 0, id: e.pointerId };
+      lastMoved = 0;
+      try { el.setPointerCapture(e.pointerId); } catch (_) { /* already captured */ }
+      el.classList.add("is-looking");
     });
     el.addEventListener("pointermove", (e) => {
-      if (e.pointerType === "mouse") {
-        const mx = e.movementX || 0, my = e.movementY || 0;
-        if (Math.abs(mx) < 200 && Math.abs(my) < 200) look(-mx * k, -my * k);
-        const r = el.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width, z = 0.1;
-        edge = fx < z ? (z - fx) / z : fx > 1 - z ? -(fx - (1 - z)) / z : 0;
-        if (opts.onMove) opts.onMove(Math.abs(mx) + Math.abs(my));
-        return;
-      }
-      if (!drag) return;
+      if (!drag || e.pointerId !== drag.id) return;
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-      drag.x = e.clientX; drag.y = e.clientY; drag.moved += Math.abs(dx) + Math.abs(dy);
-      look(dx * k * 1.3, dy * k * 1.3);
+      drag.x = e.clientX; drag.y = e.clientY; drag.moved += Math.abs(dx) + Math.abs(dy); lastMoved = drag.moved;
+      if (Math.abs(dx) < 300 && Math.abs(dy) < 300) look(dx * k * 1.3, dy * k * 1.3);
       if (opts.onMove) opts.onMove(Math.abs(dx) + Math.abs(dy));
     });
-    const end = () => (drag = null);
+    const end = (e) => { if (drag && (!e || e.pointerId === drag.id)) { drag = null; el.classList.remove("is-looking"); } };
     el.addEventListener("pointerup", end);
     el.addEventListener("pointercancel", end);
-    el.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") edge = 0; });
-    window.addEventListener("blur", () => (edge = 0));
-    return { edge: () => edge };
+    el.addEventListener("lostpointercapture", end);
+    window.addEventListener("blur", () => end());
+    return { edge: () => 0, dragged: () => lastMoved > 5 };
   };
 
   // ---- Images -------------------------------------------------------------

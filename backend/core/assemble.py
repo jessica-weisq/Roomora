@@ -28,6 +28,10 @@ import trimesh
 
 WALL_T = 0.1
 WALL_H = 2.4
+# Scans are shown as a dollhouse: cut at waist height, like an architectural cutaway, so you look into the
+# room rather than at a crumpled lid; their walls are dropped too (the plan's walls stand in for them).
+SCAN_CUT_H = 1.25
+SCAN_WALL_BAND = 0.45   # upright surfaces this close to the room's edge are its walls
 INNER_H = 1.0
 FRONT_H = 0.25
 MAX_VERTS_PER_ROOM = 400_000
@@ -136,7 +140,7 @@ def scan_mesh(scan: RoomScan, room: dict[str, Any]) -> trimesh.Trimesh | None:
     M = placement(scan, room)
     total = sum(int(v.mask.sum()) for v in scan.views)
     step = max(1, int(np.ceil(np.sqrt(total / MAX_VERTS_PER_ROOM))))
-    margin = 0.15
+    margin = -0.03   # inside the room's walls: nothing may spill past them
     x0, x1 = room["x"] - margin, room["x"] + room["width"] + margin
     z0, z1 = room["y"] - margin, room["y"] + room["depth"] + margin
 
@@ -149,7 +153,7 @@ def scan_mesh(scan: RoomScan, room: dict[str, Any]) -> trimesh.Trimesh | None:
         world = pts.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3]
         keep = v.mask[::step, ::step].reshape(-1) & np.isfinite(world).all(axis=1)
         keep &= (world[:, 0] > x0) & (world[:, 0] < x1) & (world[:, 2] > z0) & (world[:, 2] < z1)
-        keep &= (world[:, 1] > -0.2) & (world[:, 1] < WALL_H + 0.5)
+        keep &= (world[:, 1] > -0.2) & (world[:, 1] < SCAN_CUT_H)
         if H < 2 or W < 2 or not keep.any():
             continue
         idx = np.arange(H * W).reshape(H, W)
@@ -162,6 +166,15 @@ def scan_mesh(scan: RoomScan, room: dict[str, Any]) -> trimesh.Trimesh | None:
             e = np.linalg.norm(world[f[:, 0]] - world[f[:, 1]], axis=1)
             e = np.maximum(e, np.linalg.norm(world[f[:, 1]] - world[f[:, 2]], axis=1))
             f = f[e < 5 * np.median(e)]
+        # Drop the scan's own walls: upright surfaces near the room's edge
+        if len(f):
+            p0, p1, p2 = world[f[:, 0]], world[f[:, 1]], world[f[:, 2]]
+            n = np.cross(p1 - p0, p2 - p0)
+            n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
+            c = (p0 + p1 + p2) / 3
+            edge = np.minimum.reduce([c[:, 0] - room["x"], room["x"] + room["width"] - c[:, 0],
+                                      c[:, 2] - room["y"], room["y"] + room["depth"] - c[:, 2]])
+            f = f[~((np.abs(n[:, 1]) < 0.4) & (edge < SCAN_WALL_BAND))]
         vertices.append(world)
         colors.append((np.clip(rgb.reshape(-1, 3), 0, 1) * 255).astype(np.uint8))
         faces.append(f + offset)
@@ -209,6 +222,9 @@ def shell(plan: dict[str, Any]) -> list[tuple[str, trimesh.Trimesh]]:
 
 def build_glb(plan: dict[str, Any], scans: dict[str, RoomScan]) -> tuple[bytes, list[str]]:
     """Returns (.glb bytes, ids of rooms that got a scan)."""
+    from .plan_tidy import tidy
+
+    plan = tidy(plan)   # projects read before rooms were joined up get joined here too
     scene = trimesh.Scene()
     for name, mesh in shell(plan):
         scene.add_geometry(mesh, node_name=name, geom_name=name)

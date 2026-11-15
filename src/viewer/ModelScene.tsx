@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
 import type { Plan, Room } from '../api/types'
 import { useTheme } from '../state/theme'
+import { tidyPlanWithShift } from '../lib/tidyPlan'
 
 export interface SceneHandle {
   zoom: (factor: number) => void
@@ -93,7 +94,16 @@ function PlanModel({ plan, selected, onSelect, labelLayer }: { plan: Plan; selec
 
 const HIGHLIGHT = new THREE.Color('#547ba2')
 
-function GltfModel({ url, selected, onSelect }: { url: string; selected: string | null; onSelect: (id: string) => void }) {
+// Scans are shown as a dollhouse: cut at waist height (an architectural cutaway) and trimmed to their room,
+// so you look into each room instead of at a crumpled lid. New builds are cut on the server
+// (backend/core/assemble.py); this does the same for models built before that.
+const SCAN_CUT_H = 1.25
+// ...and trimmed this far in from the room's edges: in models built before the server dropped the scans' own
+// walls, those walls sit right at the edge (furniture against a wall loses only a sliver)
+const SCAN_EDGE_TRIM = 0.15
+
+// plan: the plan the model was built on; offset: where its origin is in the world (x, z)
+function GltfModel({ url, plan, offset, selected, onSelect }: { url: string; plan: Plan; offset: [number, number]; selected: string | null; onSelect: (id: string) => void }) {
   const { scene } = useGLTF(url)
   // The backend's .glb uses metres, y up, origin at the floor plan's top-left corner (x right, z down
   // the page), like the plan. Its nodes are named "floor__<roomId>", "wall__<roomId>__<n>" and "scan__<roomId>"
@@ -105,13 +115,31 @@ function GltfModel({ url, selected, onSelect }: { url: string; selected: string 
       if (!mesh.isMesh) return
       const mat = mesh.material as THREE.MeshStandardMaterial
       mat.side = THREE.DoubleSide // scans are single-sided surfaces seen from both sides
-      if (mesh.name.startsWith('floor__')) {
-        mesh.material = mat.clone() // own material, so highlighting one floor doesn't tint them all
-        found[mesh.name.slice(7)] = mesh.material as THREE.MeshStandardMaterial
+      // The rooms' floors and walls are drawn by PlanModel from the joined-up plan, so models built before rooms
+      // were joined don't show gaps between rooms; only the scans come from the model file.
+      if (/^(floor|wall)__/.test(mesh.name)) {
+        mesh.visible = false
+        return
+      }
+      if (mesh.name.startsWith('scan__')) {
+        // clipping planes work in world space: the model sits shifted so the plan is centred on the origin
+        const room = plan.rooms.find((r) => r.id === mesh.name.slice(6))
+        const ox = offset[0] + SCAN_EDGE_TRIM, oz = offset[1] + SCAN_EDGE_TRIM, t2 = 2 * SCAN_EDGE_TRIM
+        const planes = [new THREE.Plane(new THREE.Vector3(0, -1, 0), SCAN_CUT_H)]
+        if (room)
+          planes.push(
+            new THREE.Plane(new THREE.Vector3(1, 0, 0), -(room.x + ox)),
+            new THREE.Plane(new THREE.Vector3(-1, 0, 0), room.x + room.width - t2 + ox),
+            new THREE.Plane(new THREE.Vector3(0, 0, 1), -(room.y + oz)),
+            new THREE.Plane(new THREE.Vector3(0, 0, -1), room.y + room.depth - t2 + oz),
+          )
+        const own = mat.clone()
+        own.clippingPlanes = planes
+        mesh.material = own
       }
     })
     return found
-  }, [scene])
+  }, [scene, plan, offset[0], offset[1]])
 
   useEffect(() => {
     for (const [id, mat] of Object.entries(floors)) {
@@ -174,11 +202,14 @@ function Controls({ handle, plan, model }: { handle: Ref<SceneHandle>; plan: Pla
   )
 }
 
-export function ModelScene({ plan, modelUrl, selected, onSelect, handle, labelLayer }: Props) {
+export function ModelScene({ plan: rawPlan, modelUrl, selected, onSelect, handle, labelLayer }: Props) {
   const model = useRef<THREE.Group>(null)
   const dark = useTheme().resolved === 'dark'
+  // rooms joined at shared walls; the model file's scans are placed on the plan as it was when they were built
+  // (rawPlan), so they're shifted by however far the joined plan's origin moved
+  const { plan, shift } = useMemo(() => tidyPlanWithShift(rawPlan), [rawPlan])
   return (
-    <Canvas shadows camera={{ fov: 40, near: 0.1, far: 200 }} dpr={[1, 2]}>
+    <Canvas shadows camera={{ fov: 40, near: 0.1, far: 200 }} dpr={[1, 2]} onCreated={({ gl }) => { gl.localClippingEnabled = true }}>
       {/* Matches --stage in styles.css. The model itself keeps its natural colours in dark mode. */}
       <color attach="background" args={[dark ? '#161A21' : '#EEF1F5']} />
       <hemisphereLight args={['#ffffff', '#c9ced6', 0.9]} />
@@ -187,12 +218,13 @@ export function ModelScene({ plan, modelUrl, selected, onSelect, handle, labelLa
       </directionalLight>
       {/* Centre the plan on the origin so orbiting feels natural */}
       <group ref={model} position={[-plan.width / 2, 0, -plan.depth / 2]}>
-        {modelUrl ? (
-          <Suspense fallback={null}>
-            <GltfModel url={modelUrl} selected={selected} onSelect={onSelect} />
-          </Suspense>
-        ) : (
-          <PlanModel plan={plan} selected={selected} onSelect={onSelect} labelLayer={labelLayer} />
+        <PlanModel plan={plan} selected={selected} onSelect={onSelect} labelLayer={labelLayer} />
+        {modelUrl && (
+          <group position={[-shift[0], 0, -shift[1]]}>
+            <Suspense fallback={null}>
+              <GltfModel url={modelUrl} plan={rawPlan} offset={[-plan.width / 2 - shift[0], -plan.depth / 2 - shift[1]]} selected={selected} onSelect={onSelect} />
+            </Suspense>
+          </group>
         )}
       </group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>

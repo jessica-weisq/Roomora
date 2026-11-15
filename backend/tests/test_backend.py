@@ -23,11 +23,11 @@ ROOM = {"id": "living", "name": "Living room", "x": 6.0, "y": 1.0, "width": 4.0,
 
 @pytest.mark.parametrize("seed", range(6))
 def test_scan_lands_inside_its_room(seed):
-    mesh = scan_mesh(fake_room_scan(4.0, 3.0, seed=seed), ROOM)
+    mesh = scan_mesh(fake_room_scan(4.0, 3.0, seed=seed, furniture=True), ROOM)
     assert mesh is not None and len(mesh.faces) > 1000
     lo, hi = mesh.bounds
-    # Floor at y ≈ 0, walls up to ~2.4 m
-    assert abs(lo[1]) < 0.15 and 2.2 < hi[1] < 2.6
+    # Floor at y ≈ 0; the scan's walls are gone (the plan's walls stand in), the table is kept, at its height
+    assert abs(lo[1]) < 0.15 and 0.65 < hi[1] < 0.85
     # Footprint matches the room rectangle (x 6–10, z 1–4) within a few cm, not rotated 90°
     assert abs(lo[0] - 6.0) < 0.2 and abs(hi[0] - 10.0) < 0.2
     assert abs(lo[2] - 1.0) < 0.2 and abs(hi[2] - 4.0) < 0.2
@@ -524,3 +524,62 @@ def test_reimagine_endpoint(tmp_path):
     # the prompt keeps the real room from the photo and the design from the mock-up
     p = prompt_for("Bedroom 2", True)
     assert "first image is a real photograph" in p and "mock-up" in p and "bedroom 2" in p
+
+
+def test_rooms_are_joined_at_shared_walls():
+    from core.plan_tidy import tidy
+    # boxes just inside the walls: a living room, and a bathroom below it a wall's thickness away and a bit off
+    plan = {"width": 8, "depth": 7, "rooms": [
+        {"id": "living", "name": "Living", "x": 0.1, "y": 0.1, "width": 5.8, "depth": 3.8},
+        {"id": "bath", "name": "Bath", "x": 0.18, "y": 4.12, "width": 2.0, "depth": 2.0},
+        {"id": "bed", "name": "Bed", "x": 6.12, "y": 0.08, "width": 1.9, "depth": 3.85},
+    ]}
+    t = {r["id"]: r for r in tidy(plan)["rooms"]}
+    assert abs(t["living"]["y"] + t["living"]["depth"] - t["bath"]["y"]) < 1e-6        # living and bath share a wall
+    assert abs(t["living"]["x"] + t["living"]["width"] - t["bed"]["x"]) < 1e-6         # living and bed share a wall
+    assert t["living"]["x"] == t["bath"]["x"] == 0 and t["living"]["y"] == t["bed"]["y"] == 0   # fronts lined up
+    # rooms far apart stay apart, and nothing shrinks to nothing
+    far = tidy({"width": 20, "depth": 5, "rooms": [{"id": "a", "name": "A", "x": 0, "y": 0, "width": 3, "depth": 3},
+                                                     {"id": "b", "name": "B", "x": 10, "y": 0, "width": 3, "depth": 3}]})
+    assert far["rooms"][1]["x"] == 10
+    # an en suite inside a bedroom's box isn't merged into it
+    ens = tidy({"width": 5, "depth": 4, "rooms": [{"id": "bed", "name": "Bed", "x": 0, "y": 0, "width": 5, "depth": 4},
+                                                    {"id": "ens", "name": "En suite", "x": 3.5, "y": 0, "width": 1.5, "depth": 2}]})
+    assert {r["id"]: r["width"] for r in ens["rooms"]} == {"bed": 5, "ens": 1.5}
+
+
+def test_scans_are_a_dollhouse():
+    from core.assemble import SCAN_CUT_H, scan_mesh
+    room = {"id": "r", "name": "Room", "x": 1.0, "y": 1.0, "width": 4.0, "depth": 3.0}
+    mesh = scan_mesh(fake_room_scan(4.0, 3.0, height=2.7, furniture=True), room)
+    assert mesh is not None
+    v = mesh.vertices[np.unique(mesh.faces)]
+    assert (v[:, 1] > 0.6).sum() > 100                              # the table survived
+    assert v[:, 1].max() <= SCAN_CUT_H + 1e-6                       # no lid
+    assert v[:, 0].min() >= 1.0 and v[:, 0].max() <= 5.0            # nothing outside the room
+    assert v[:, 2].min() >= 1.0 and v[:, 2].max() <= 4.0
+
+
+def test_fixtures_from_the_plan():
+    raw = {"plan": {"rooms": [
+        {"name": "Studio", "box_2d": [0, 0, 600, 1000], "width_m": 6, "depth_m": 4.5},
+        {"name": "Bathroom", "box_2d": [650, 200, 900, 600], "width_m": 2.4, "depth_m": 1.9},
+        {"name": "Entrance hall", "box_2d": [650, 620, 900, 800], "width_m": 1.08, "depth_m": 1.9},
+    ], "fixtures": [
+        {"type": "kitchen_run", "room": "Studio", "box_2d": [520, 0, 600, 500]},
+        {"type": "shower", "room": "Bathroom", "box_2d": [650, 200, 900, 330]},
+        {"type": "wc", "room": "bathroom", "box_2d": [800, 520, 900, 600]},
+        {"type": "jacuzzi", "room": "Bathroom", "box_2d": [650, 200, 900, 330]},     # not a type we know
+        {"type": "basin", "room": "Bathroom", "box_2d": "here"},                       # no box
+    ]}, "photos": []}
+    plan = normalize_layout(raw, [])["plan"]
+    fx = plan["fixtures"]
+    assert [f["type"] for f in fx] == ["kitchen_run", "shower", "wc"]
+    ids = {r["name"]: r["id"] for r in plan["rooms"]}
+    assert fx[1]["room"] == ids["Bathroom"] and fx[2]["room"] == ids["Bathroom"]
+    shower = fx[1]; bath = next(r for r in plan["rooms"] if r["name"] == "Bathroom")
+    # same frame as the rooms: the shower is inside the bathroom, in its left-hand end
+    assert bath["x"] - 0.05 <= shower["x"] and shower["x"] + shower["width"] <= bath["x"] + bath["width"] + 0.05
+    assert bath["y"] - 0.05 <= shower["y"] and shower["y"] + shower["depth"] <= bath["y"] + bath["depth"] + 0.05
+    assert shower["x"] - bath["x"] < 0.1
+    assert "Entrance hall" in ids

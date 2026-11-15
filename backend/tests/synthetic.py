@@ -12,9 +12,10 @@ def _grid(origin, u, v, nu, nv):
     return origin + a[..., None] * u + b[..., None] * v  # (nv, nu, 3)
 
 
-def fake_room_scan(width=4.0, depth=3.0, height=2.4, seed=0) -> RoomScan:
+def fake_room_scan(width=4.0, depth=3.0, height=2.4, seed=0, furniture=False) -> RoomScan:
     """Floor + 4 walls of a width × depth room (true frame: y up), then hidden in a random frame
-    the way MASt3R would report it (OpenCV-style: camera y axis pointing down)."""
+    the way MASt3R would report it (OpenCV-style: camera y axis pointing down). With furniture=True, a
+    table-high box stands in the middle of the room."""
     rng = np.random.default_rng(seed)
     W, D, H = width, depth, height
     surfaces = [
@@ -24,6 +25,15 @@ def fake_room_scan(width=4.0, depth=3.0, height=2.4, seed=0) -> RoomScan:
         _grid(np.array([0, 0, 0.0]), np.array([0, 0, D]), np.array([0, H, 0.0]), 45, 36),  # left wall
         _grid(np.array([W, 0, 0.0]), np.array([0, 0, D]), np.array([0, H, 0.0]), 45, 36),  # right wall
     ]
+    if furniture:   # a 1.2 x 0.6 x 0.75 m table in the middle: its top and its four sides
+        x0, z0, x1, z1, top = W / 2 - 0.6, D / 2 - 0.3, W / 2 + 0.6, D / 2 + 0.3, 0.75
+        surfaces += [
+            _grid(np.array([x0, top, z0]), np.array([x1 - x0, 0, 0.0]), np.array([0, 0, z1 - z0]), 24, 12),
+            _grid(np.array([x0, 0, z0]), np.array([x1 - x0, 0, 0.0]), np.array([0, top, 0.0]), 24, 15),
+            _grid(np.array([x0, 0, z1]), np.array([x1 - x0, 0, 0.0]), np.array([0, top, 0.0]), 24, 15),
+            _grid(np.array([x0, 0, z0]), np.array([0, 0, z1 - z0]), np.array([0, top, 0.0]), 12, 15),
+            _grid(np.array([x1, 0, z0]), np.array([0, 0, z1 - z0]), np.array([0, top, 0.0]), 12, 15),
+        ]
     # Hide the room: random turn about the vertical, flip to y-down, random tilt-free offset, slight scale noise
     yaw = rng.uniform(0, 2 * np.pi)
     c, s = np.cos(yaw), np.sin(yaw)

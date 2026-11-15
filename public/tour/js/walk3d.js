@@ -49,10 +49,10 @@
       };
 
       root.innerHTML = `
-        <canvas class="w3-canvas" tabindex="0" aria-label="3D model of the flat. Move the mouse to look around, use W A S D or the arrow keys to move."></canvas>
+        <canvas class="w3-canvas" tabindex="0" aria-label="3D model of the flat. Drag to look around, use W A S D or the arrow keys to move."></canvas>
 
         <div class="w3-help">
-          <p>${coarse ? "Drag to look around. Use the circle to walk, or double-tap the floor to go there." : "Move the mouse to look around; hold it near the left or right edge to keep turning. Walk with W A S D or the arrow keys, or double-click the floor to go there."}</p>
+          <p>${coarse ? "Drag to look around. Use the circle to walk, or double-tap the floor to go there." : "Click and drag to look around. Walk with W A S D or the arrow keys, or double-click the floor to go there."}</p>
           <button type="button">Got it</button>
         </div>
         <div class="w3-joy" aria-hidden="true"><span class="w3-knob"></span></div>

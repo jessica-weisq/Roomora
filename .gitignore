@@ -24,3 +24,9 @@ dist-ssr
 *.sw?
 
 .vercel
+tools/tour/.three-r128.min.js
+
+# Standalone tour builds and zips passed around: keep them out of the repo
+/roomora-tour.html
+/veduta-tour.html
+/*.zip

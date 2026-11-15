@@ -39,6 +39,19 @@ TOOL = {
                 "properties": {
                     "width_m": {"type": "number", "description": "Overall width of the plan in metres"},
                     "depth_m": {"type": "number", "description": "Overall depth (top to bottom) in metres"},
+                    "fixtures": {
+                        "type": "array",
+                        "description": "Fittings and furniture DRAWN on the plan (not imagined)",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "type": {"type": "string", "enum": ["kitchen_run", "island", "bath", "shower", "wc", "basin", "bed", "wardrobe", "sofa", "table"]},
+                                "room": {"type": "string", "description": "The room it's in, exactly as in rooms"},
+                                "box_2d": {"type": "array", "items": {"type": "integer"}, "description": "Its outline on the plan image: [ymin, xmin, ymax, xmax], each 0-1000"},
+                            },
+                            "required": ["type", "box_2d"],
+                        },
+                    },
                     "north_arrow_deg": {
                         "type": "number",
                         "description": "Only if the plan has a north arrow or compass: the direction it points on the page, "
@@ -111,6 +124,12 @@ INSTRUCTIONS = """You are helping turn a property's floor plan and room photos i
    with its bounding box. x_m and y_m (its position in metres) are optional.
    If the plan shows several floors, place them side by side, left to right, without overlapping.
    Give rooms with the same type distinct names (as labelled, e.g. "Bedroom 1", "Bedroom 2").
+   Unlabelled spaces count too: an entrance lobby or hallway behind the front door, a corridor, a landing.
+   Call them "Entrance hall", "Hall" or "Landing" and give each a box like any room.
+   Then list the fixtures and furniture the plan actually draws, as fixtures: kitchen runs of worktop and
+   units (kitchen_run, one per straight run), islands, baths, shower trays or enclosures, WCs, basins, beds,
+   built-in wardrobes, sofas and tables, each with the room it's in and its box_2d on the image. Only what
+   is drawn; leave out anything you'd be guessing.
    If the plan has a north arrow or compass rose, give the direction it points as north_arrow_deg
    (degrees clockwise from straight up the page). Leave it out if there isn't one; don't guess.
 
@@ -157,13 +176,16 @@ def _box(value: Any) -> list[float] | None:
     return [xmin, ymin, xmax, ymax]
 
 
+FIXTURE_TYPES = {"kitchen_run", "island", "bath", "shower", "wc", "basin", "bed", "wardrobe", "sofa", "table"}
+
+
 def _median(values: list[float]) -> float:
     s = sorted(values)
     n = len(s)
     return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
 
 
-def _place_from_boxes(entries: list[dict[str, Any]]) -> None:
+def _place_from_boxes(entries: list[dict[str, Any]]) -> tuple[float, float] | None:
     """Put rooms in metres using where they are on the drawing (the boxes) and the scale their written sizes give.
 
     Vision models are much better at pointing at a room on the image than at turning it into coordinates in
@@ -173,16 +195,17 @@ def _place_from_boxes(entries: list[dict[str, Any]]) -> None:
     """
     boxed = [e for e in entries if e["box"]]
     if not boxed:
-        return
+        return None
     sx = [e["w"] / (e["box"][2] - e["box"][0]) for e in boxed if e["w"]]
     sy = [e["d"] / (e["box"][3] - e["box"][1]) for e in boxed if e["d"]]
     if not sx or not sy:
-        return
+        return None
     mx, my = _median(sx), _median(sy)   # metres across the whole image, and down it
     for e in boxed:
         x0, y0, x1, y1 = e["box"]
         e["x"], e["y"], e["w"], e["d"] = x0 * mx, y0 * my, (x1 - x0) * mx, (y1 - y0) * my
         e["placed"] = True
+    return mx, my
 
 
 def normalize(raw: dict[str, Any], photo_ids: list[str]) -> dict[str, Any]:
@@ -200,9 +223,10 @@ def normalize(raw: dict[str, Any], photo_ids: list[str]) -> dict[str, Any]:
         if e["d"] is not None and e["d"] <= 0:
             e["d"] = None
         entries.append(e)
-    _place_from_boxes(entries)
+    scale = _place_from_boxes(entries)
     # rooms placed from boxes start at the drawing's corner; shift so the plan starts at 0, 0
     placed = [e for e in entries if e["placed"]]
+    ox = oy = 0.0
     if placed:
         ox, oy = min(e["x"] for e in placed), min(e["y"] for e in placed)
         for e in placed:
@@ -233,6 +257,9 @@ def normalize(raw: dict[str, Any], photo_ids: list[str]) -> dict[str, Any]:
 
     width = max(float(plan_in.get("width_m") or 0), max(r["x"] + r["width"] for r in rooms))
     depth = max(float(plan_in.get("depth_m") or 0), max(r["y"] + r["depth"] for r in rooms))
+    from .plan_tidy import tidy
+
+    # rooms joined at their shared walls (boxes inside the walls would otherwise float a wall apart)
     plan: dict[str, Any] = {"width": round(width, 3), "depth": round(depth, 3), "rooms": rooms}
     # north: the compass bearing the top of the plan faces, from the north arrow if there is one
     try:
@@ -265,6 +292,29 @@ def normalize(raw: dict[str, Any], photo_ids: list[str]) -> dict[str, Any]:
             return by_key[k]
         hits = {i for kk, i in by_key.items() if k in kk or kk in k}
         return hits.pop() if len(hits) == 1 else None
+
+    # fixtures drawn on the plan: where they are on the image, and (when rooms were placed from boxes) in metres
+    fixtures = []
+    for f in plan_in.get("fixtures") or []:
+        if not isinstance(f, dict) or f.get("type") not in FIXTURE_TYPES:
+            continue
+        box = _box(f.get("box_2d"))
+        if not box:
+            continue
+        fx: dict[str, Any] = {"type": f["type"], "box": [round(v, 4) for v in box]}
+        room_id = rid(f.get("room"))
+        if room_id:
+            fx["room"] = room_id
+        if scale:
+            mx, my = scale
+            fx.update(x=round(box[0] * mx - ox, 3), y=round(box[1] * my - oy, 3),
+                      width=round((box[2] - box[0]) * mx, 3), depth=round((box[3] - box[1]) * my, 3))
+        fixtures.append(fx)
+        if len(fixtures) >= 60:
+            break
+    if fixtures:
+        plan["fixtures"] = fixtures
+    plan = tidy(plan)   # (after the fixtures, so they move with the rooms)
 
     seen: dict[int, dict[str, Any]] = {}
     for p in raw.get("photos") or []:

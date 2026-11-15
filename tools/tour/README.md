@@ -17,8 +17,7 @@ http://localhost:5173/tour/index.html), not by double-clicking the file.
 
 ## Controls
 
-- **3D walk**: move the mouse to look around (hold it near the left or right edge to keep turning; on touch
-  screens, drag); walk with W A S D or the arrow keys (Shift to go faster), or double-click the floor.
+- **3D walk**: click and drag to look around (on touch screens, drag); walk with W A S D or the arrow keys (Shift to go faster), or double-click the floor.
   The floor plan card shows where you are; select a room to jump there.
 - **3D photos**: each room's photos. Photos are 3D (depth maps): the sample's were made with `build_depth.py`, a project's come from the backend's `/depth` endpoint. With the mock backend, project photos are flat.
 - **Street**: Street View facing the building, falling back to a static map and then the front photo
@@ -98,3 +97,13 @@ public or commercial use.
 `public/tour/index.html` carries a build stamp (bottom-left corner of the tour, and `?v=` on every script and
 stylesheet so browsers fetch new files). After deploying, check the stamp matches. Bump it in index.html when
 you change the tour.
+
+## One file you can double-click
+
+    python3 tools/tour/build_standalone.py veduta-tour.html
+
+bundles the whole tour (scripts, styles, three.js, the sample flat's photos and depth maps) into one HTML file
+that opens straight from your disk, offline. Settings (Google Maps key, the backend for Reimagine with Fal) are
+at the top of the file. Street View only works from a web address, so for that run `python3 -m http.server 8000`
+in the file's folder and open http://localhost:8000/veduta-tour.html.
+

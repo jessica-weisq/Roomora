@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { PhotoMatch, Plan } from '../api/types'
+import { tidyPlan } from '../lib/tidyPlan'
 
 export interface Photo {
   id: string
@@ -87,7 +88,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const setMatchResult = useCallback((projectId: string, plan: Plan, matches: PhotoMatch[]) => {
     const assignments: Record<string, string> = {}
     for (const m of matches) assignments[m.photoId] = m.confident && m.roomId ? m.roomId : ''
-    setState((s) => ({ ...s, projectId, plan, matches, assignments, jobId: null, modelUrl: null, panoramas: {} }))
+    // rooms joined at their shared walls (the backend does this too; this covers older servers and the mock)
+    setState((s) => ({ ...s, projectId, plan: tidyPlan(plan), matches, assignments, jobId: null, modelUrl: null, panoramas: {} }))
   }, [])
 
   const assign = useCallback((photoId: string, roomId: string) => {

@@ -320,6 +320,19 @@
         RB(g, L - 0.22, 0.72, 0.01, 0.002, mirror(), 0, 1.19, -0.137);
         [-1, 1].forEach((sd) => RB(g, 0.035, 0.72, 0.02, 0.01, glow("#fff6e4", "#f6dfb4", 1.2), sd * (L / 2 - 0.09), 1.19, -0.13));
       },
+      // a walk-in shower: low white tray, a clear glass screen along its open side, a ceiling-height riser and head
+      shower(g, o) {
+        const W = o.w || 0.9, D = o.d || 0.9, cer = ceramic(), chrome = metal("#d8d8d8", 0.12);
+        RB(g, W, 0.06, D, 0.02, cer, 0, 0, 0);
+        const glass = M("sglass", () => new THREE.MeshPhysicalMaterial({ color: lin("#dfeaee"), roughness: 0.05, transparent: true, opacity: 0.22, depthWrite: false, envMapIntensity: 1 }));
+        RB(g, W * 0.75, 1.95, 0.012, 0.004, glass, -W * 0.125, 0.06, D / 2 - 0.02);
+        RB(g, 0.02, 1.95, 0.02, 0.005, chrome, W / 2 * 0.5 + 0.01, 0.06, D / 2 - 0.02);
+        RB(g, 0.025, 1.5, 0.025, 0.01, chrome, 0, 0.7, -D / 2 + 0.05);
+        CY(g, 0.11, 0.11, 0.012, chrome, 0, 2.15, -D / 2 + 0.2, 24);
+        RB(g, 0.02, 0.02, 0.18, 0.005, chrome, 0, 2.16, -D / 2 + 0.1);
+        CY(g, 0.035, 0.035, 0.004, metal("#111", 0.6), 0, 0.062, 0, 16);   // drain
+        return false;   // you can walk into a shower
+      },
       wc(g) {
         const cer = ceramic();
         RB(g, 0.38, 0.32, 0.55, 0.12, cer, 0, 0.3, 0.05);

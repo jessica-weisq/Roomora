@@ -24,6 +24,21 @@ export interface Plan {
    * arrow. Missing when the plan has none. The walk-through uses it to turn the view outside and the sunlight.
    */
   north?: number | null
+  /** Fittings and furniture drawn on the plan, read by the vision model; the walk-through builds them where drawn. */
+  fixtures?: PlanFixture[]
+}
+
+export interface PlanFixture {
+  type: 'kitchen_run' | 'island' | 'bath' | 'shower' | 'wc' | 'basin' | 'bed' | 'wardrobe' | 'sofa' | 'table'
+  /** the room it's in */
+  room?: string
+  /** where it is on the floor plan image: [x0, y0, x1, y1] fractions */
+  box: [number, number, number, number]
+  /** in metres, in the same frame as the rooms (when the rooms were placed from boxes) */
+  x?: number
+  y?: number
+  width?: number
+  depth?: number
 }
 
 export interface PhotoMatch {

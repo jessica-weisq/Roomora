@@ -371,8 +371,12 @@
           if (key !== lastHover) { lastHover = key; outline(hiGroup, sg ? wallOf(sg) : [], hiMat); }
         });
       });
+      // a drag to look around isn't a click on a wall
+      let downAt = null;
+      canvas.addEventListener("pointerdown", (e) => { downAt = [e.clientX, e.clientY]; });
       canvas.addEventListener("click", (e) => {
         if (!on) return;
+        if (downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;
         const sg = pick(e);
         if (sg) { select(sg); tip.hidden = true; }
       });

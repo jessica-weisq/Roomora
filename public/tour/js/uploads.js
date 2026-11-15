@@ -105,7 +105,9 @@
     // First, big filled blocks out of the way (a title bar, a filled key or logo): anything mostly solid and
     // fatter than 3.5% of the drawing. Lettering on a title bar slices it into bands that pass for long, thick
     // strokes, so they must go before the wall thickness is worked out.
-    const tooThick = Math.max(24, Math.min(w, h) * 0.035);
+    // (a pier between two windows can be a chunky block too, so only really fat blocks count here; the
+    // wall-thickness rule below deals with the rest)
+    const tooThick = Math.max(40, Math.min(w, h) * 0.06);
     {
       const pc = components(wall, w, h, true), n = pc.sizes.length;
       const ax0 = new Int32Array(n).fill(w), ay0 = new Int32Array(n).fill(h), ax1 = new Int32Array(n).fill(-1), ay1 = new Int32Array(n).fill(-1);
@@ -157,9 +159,20 @@
     // A piece is a solid block, not wall, if it's filled in and much fatter than a wall: a toolbar, a logo, a
     // headboard, a table. A straight run of wall is filled in too but only one wall thick; a column built into
     // a wall is part of the wall's piece, so it stays.
+    // ...but a pier between two windows, or a chimney breast, is solid too, and it sits on the building's outline
+    // (in line with the outer walls), where furniture never does: blocks on the outline stay.
+    let ox0 = w, oy0 = h, ox1 = -1, oy1 = -1;
+    for (let k = 0; k < nComp; k++) {
+      const bw = bx1[k] - bx0[k] + 1, bh = by1[k] - by0[k] + 1;
+      if (wc.sizes[k] < 60 || Math.max(bw, bh) < wallPx * 6) continue;   // walls long enough to outline the building
+      if (wc.sizes[k] / (bw * bh) > 0.5 && Math.min(bw, bh) > wallPx * 1.7) continue;
+      ox0 = Math.min(ox0, bx0[k]); oy0 = Math.min(oy0, by0[k]); ox1 = Math.max(ox1, bx1[k]); oy1 = Math.max(oy1, by1[k]);
+    }
+    // (in line with them: a pier's outer face is flush with the outer wall; a headboard is set in from it)
+    const onOutline = (k) => ox1 >= 0 && (bx0[k] - ox0 < wallPx * 0.75 || ox1 - bx1[k] < wallPx * 0.75 || by0[k] - oy0 < wallPx * 0.75 || oy1 - by1[k] < wallPx * 0.75);
     const solid = (k) => {
       const bw = bx1[k] - bx0[k] + 1, bh = by1[k] - by0[k] + 1, lo = Math.min(bw, bh), hi = Math.max(bw, bh);
-      return wc.sizes[k] / (bw * bh) > 0.5 && lo > wallPx * 1.7 && (hi / lo < 6 || lo > wallPx * 4);
+      return wc.sizes[k] / (bw * bh) > 0.5 && lo > wallPx * 1.4 && (hi / lo < 6 || lo > wallPx * 4) && !(onOutline(k) && lo < wallPx * 6);
     };
     // windows and doors cut the walls into separate pieces, so every decent length of wall (about a metre) is
     // kept; anything shorter standing on its own is a letter, a symbol or a blob, not a wall
@@ -167,8 +180,30 @@
     measure();   // again, now the thin strokes are gone (where they met a piece, its runs looked long)
     const thickSum = new Float64Array(nComp);
     for (let i = 0; i < N; i++) if (wall[i]) thickSum[wc.lab[i]] += thick[i];
-    const stray = (k) => Math.max(bx1[k] - bx0[k], by1[k] - by0[k]) + 1 < wallPx * 4 || thickSum[k] / wc.sizes[k] < wallPx * 0.7;
+    // (short is fine on the building's outline: a pier between two windows is short and belongs there)
+    const stray = (k) => (Math.max(bx1[k] - bx0[k], by1[k] - by0[k]) + 1 < wallPx * 4 && !onOutline(k)) || thickSum[k] / wc.sizes[k] < wallPx * 0.7;
     for (let i = 0; i < N; i++) if (wall[i] && (wc.sizes[wc.lab[i]] < 60 || solid(wc.lab[i]) || stray(wc.lab[i]))) wall[i] = 0;
+    // Smooth the walls' outlines: anti-aliased edges trace as little steps, and every step would become a sliver
+    // of wall in 3D (thin vertical streaks). Fill notches, then shave bumps, a couple of pixels deep.
+    {
+      const rad = Math.max(1, Math.min(3, Math.round(wallPx * 0.12)));
+      const morph = (src, grow) => {   // square dilate (grow) or erode
+        const tmp = new Uint8Array(N), out = new Uint8Array(N);
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+          let v = grow ? 0 : 1;
+          for (let k = -rad; k <= rad; k++) { const xx = x + k; const s = xx < 0 || xx >= w ? 0 : src[y * w + xx]; if (grow ? s : !s) { v = grow ? 1 : 0; break; } }
+          tmp[y * w + x] = v;
+        }
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+          let v = grow ? 0 : 1;
+          for (let k = -rad; k <= rad; k++) { const yy = y + k; const s = yy < 0 || yy >= h ? 0 : tmp[yy * w + x]; if (grow ? s : !s) { v = grow ? 1 : 0; break; } }
+          out[y * w + x] = v;
+        }
+        return out;
+      };
+      const closed = morph(morph(wall, true), false), opened = morph(morph(closed, false), true);
+      wall.set(opened);
+    }
     // the drawing itself: the box round the walls that are left (anything beyond it, such as a screenshot's
     // border, captions or page furniture, is outside)
     let cx0 = w, cy0 = h, cx1 = -1, cy1 = -1;
@@ -182,9 +217,48 @@
     const seed = (i) => { if (!line[i] && !outside[i]) { outside[i] = 1; st.push(i); } };
     for (let x = cx0; x <= cx1; x++) { seed(cy0 * w + x); seed(cy1 * w + x); }
     for (let y = cy0; y <= cy1; y++) { seed(y * w + cx0); seed(y * w + cx1); }
+    // and from anywhere beyond the walls' outer bounds: a frame line round the drawing must not shut the margin
+    // in (nothing out there can be indoors)
+    for (let y = cy0; y <= cy1; y++) for (let x = cx0; x <= cx1; x++) if (x < cx0 + pad || x > cx1 - pad || y < cy0 + pad || y > cy1 - pad) seed(y * w + x);
     while (st.length) {
       const i = st.pop(), x = i % w, y = (i / w) | 0;
       if (x > cx0) seed(i - 1); if (x < cx1) seed(i + 1); if (y > cy0) seed(i - w); if (y < cy1) seed(i + w);
+    }
+    // ...but not in through the front door. An open doorway in the outer wall would let "outside" flood the hall or
+    // lobby behind it. So the outside is shrunk by about half a doorway (which cuts it off at any door-sized
+    // gap), only the part still joined to the edge of the drawing is kept, and that's grown back.
+    {
+      const R = Math.max(3, Math.min(Math.round(wallPx * 2.5), Math.round(Math.min(w, h) * 0.04)));
+      const dist = new Int32Array(N).fill(1 << 30), q = [];
+      for (let i = 0; i < N; i++) if (!outside[i]) { dist[i] = 0; q.push(i); }
+      for (let qi = 0; qi < q.length; qi++) {   // distance from the nearest not-outside pixel (city blocks)
+        const i = q[qi], x = i % w, d = dist[i] + 1;
+        if (d > R + 1) continue;
+        for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) if (j >= 0 && j < N && dist[j] > d) { dist[j] = d; q.push(j); }
+      }
+      // (everything on or beyond the edge of the drawing counts as wide-open outside, however close the
+      // building comes to it: plans are often cropped tight)
+      const core = new Uint8Array(N), st2 = [];
+      for (let i = 0; i < N; i++) {
+        const x = i % w, y = (i / w) | 0;
+        if (outside[i] && (x <= cx0 || x >= cx1 || y <= cy0 || y >= cy1 || x === 0 || y === 0 || x === w - 1 || y === h - 1)) { core[i] = 1; st2.push(i); }
+      }
+      while (st2.length) {
+        const i = st2.pop(), x = i % w;
+        for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) if (j >= 0 && j < N && !core[j] && outside[j] && dist[j] > R) { core[j] = 1; st2.push(j); }
+      }
+      // grow the edge-joined part back out by R, through outside pixels only
+      const back = new Int32Array(N).fill(-1), q2 = [];
+      for (let i = 0; i < N; i++) if (core[i]) { back[i] = 0; q2.push(i); }
+      for (let qi = 0; qi < q2.length; qi++) {
+        const i = q2[qi], x = i % w, d = back[i] + 1;
+        if (d > R) continue;
+        for (const j of [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w]) if (j >= 0 && j < N && back[j] < 0 && outside[j]) { back[j] = d; q2.push(j); }
+      }
+      // whatever the flood reached only through a doorway is indoors after all
+      let sealed = 0;
+      for (let i = 0; i < N; i++) if (outside[i] && back[i] < 0) { outside[i] = 0; sealed++; }
+      void sealed;
     }
     // 2 px cells: 1 wall, 2 indoor floor, 0 outside
     const CELL = 2, GW = Math.floor(w / CELL), GH = Math.floor(h / CELL), g = new Uint8Array(GW * GH);
@@ -244,7 +318,7 @@
     const [x0, y0, x1, y1] = room.px, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
     const W = (x1 - x0) * mpp, D = (y1 - y0) * mpp, m = (v) => v / mpp, out = [];
     const add = (t, x, y, rot, o = {}) => out.push(Object.assign({ room: room.id, type: t, x, y, rot }, o));
-    if (W < 1.6 || D < 1.6) return out;
+    if (W < 1.3 || D < 1.3) return out;
     if (type === "living") {
       add("rug", cx, cy, 0, { w: Math.min(4, W - 1), d: Math.min(3, D - 1) });
       add("sofa", cx, cy + m(Math.min(1.5, D / 2 - 0.6)), 180, { len: Math.min(2.6, W - 1.2) });
@@ -261,8 +335,11 @@
       if (type === "kitchen" && W > 3.5 && D > 3.8) add("island", cx, cy + m(0.3), 90, { w: 1.0, d: Math.min(2.4, W - 2) });
       else add("table", cx, cy + (type === "kitchen" ? m(0.6) : 0), 0, { w: Math.min(2.2, W - 1.6), d: 0.95, chairs: W > 3.6 ? 3 : 2, pendants: 2 });
     } else if (type === "bathroom") {
-      add("bath", cx, y0 + m(0.45), 0, { len: Math.min(1.7, W - 0.3), w: 0.75 });
-      if (D > 2.2) add("vanity", cx, y1 - m(0.3), 180, { len: Math.min(1.4, W - 0.4), basins: W > 2.4 ? 2 : 1 });
+      // a bath only where one fits with room to stand; otherwise a WC and a basin (most small bathrooms
+      // have a shower, but where it is is a guess the plan's own fixtures answer better)
+      if (W >= 2.2 && D >= 1.9) add("bath", cx, y0 + m(0.45), 0, { len: Math.min(1.7, W - 0.4), w: 0.75 });
+      add("wc", x0 + m(0.4), y1 - m(0.4), 180);
+      add("vanity", x1 - m(0.45), y1 - m(0.3), 180, { len: Math.min(0.8, W / 2 - 0.2), basins: 1 });
     } else if (type === "study") {
       add("desk", cx, cy, 0, { w: 1.4 }); add("bookcase", cx, y0 + m(0.2), 0, { len: Math.min(2.2, W - 0.6) });
     } else if (type === "wardrobe") {

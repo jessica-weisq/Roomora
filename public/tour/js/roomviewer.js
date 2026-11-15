@@ -478,7 +478,7 @@
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         renderer.setClearColor("#161b1d");
         wrap.appendChild(renderer.domElement);
-        const hint = el("p", "rv-fused-hint", "Built in 3D from two photos of this room. Move the mouse to look around (near the left or right edge to keep turning); walk with W A S D or the arrow keys, or double-click the floor. Plain surfaces fill anything neither photo shows.");
+        const hint = el("p", "rv-fused-hint", "Built in 3D from two photos of this room. Click and drag to look around; walk with W A S D or the arrow keys, or double-click the floor. Plain surfaces fill anything neither photo shows.");
         wrap.appendChild(hint);
         const spots = el("div", "rv-fused-spots");
         F.parts.forEach((pt, k) => {

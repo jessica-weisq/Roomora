@@ -110,7 +110,7 @@
       }
     });
     boxes.forEach((b) => { b.r.px = [b.x0 * CELL, b.y0 * CELL, b.x1 * CELL, b.y1 * CELL]; b.r.area = (b.x1 - b.x0) * (b.y1 - b.y0); });
-    return { tr: { w: GW * CELL, h: GH * CELL, GW, GH, CELL, g }, mpp, origin: [margin * mpp, margin * mpp] };
+    return { tr: { w: GW * CELL, h: GH * CELL, GW, GH, CELL, g }, mpp, origin: [margin * mpp, margin * mpp], toPx: (x, y) => [margin + x / mpp, margin + y / mpp] };
   }
 
   // ---- walls traced from the plan image, lined up with the rooms the AI measured ----
@@ -211,42 +211,52 @@
   // clearly matches, then every edge snaps to the nearest wall line. Returns the share of edge length on walls.
   function finishFit(tr, rooms, mpp, near) {
     const { CELL } = tr;
-    // 1. enclosed spaces, matched one-to-one, best matches first
-    const E = enclosedSpaces(tr, mpp), pairs = [];
-    rooms.forEach((r, ri) => {
+    // 1. enclosed spaces. A room takes every walled space that lies mostly inside its box (a bathroom whose
+    //    shower is partitioned off is two spaces, one room), smaller rooms choosing first so an en suite inside a
+    //    bedroom's box keeps its own space. A box that's only roughly right also takes the space under its middle.
+    const E = enclosedSpaces(tr, mpp), claimed = new Set();
+    let matched = 0;
+    rooms.map((r, i) => i).sort((p, q) => areaOf(rooms[p].px) - areaOf(rooms[q].px)).forEach((ri) => {
+      const r = rooms[ri];
       if (r.type === "terrace") return;
-      const [x0, y0, x1, y1] = r.px, tally = new Map();
-      for (let y = Math.max(0, Math.floor(y0 / CELL)); y < Math.min(E.GH, Math.ceil(y1 / CELL)); y++)
-        for (let x = Math.max(0, Math.floor(x0 / CELL)); x < Math.min(E.GW, Math.ceil(x1 / CELL)); x++) {
+      const [x0, y0, x1, y1] = r.px, grow = 0.3 / mpp, tally = new Map(), totals = new Map();
+      for (let y = Math.max(0, Math.floor((y0 - grow) / CELL)); y < Math.min(E.GH, Math.ceil((y1 + grow) / CELL)); y++)
+        for (let x = Math.max(0, Math.floor((x0 - grow) / CELL)); x < Math.min(E.GW, Math.ceil((x1 + grow) / CELL)); x++) {
           const l = E.lab[y * E.GW + x]; if (l >= 0) tally.set(l, (tally.get(l) || 0) + 1);
         }
+      tally.forEach((_, l) => totals.set(l, E.spaces[l].n));
       const mx = Math.floor((x0 + x1) / 2 / CELL), my = Math.floor((y0 + y1) / 2 / CELL);
       const atMiddle = mx >= 0 && my >= 0 && mx < E.GW && my < E.GH ? E.lab[my * E.GW + mx] : -1;
-      tally.forEach((_, l) => {
-        const sp = E.spaces[l], ratio = areaOf(sp.px) / (areaOf(r.px) || 1);
-        // a space much bigger than the room is open-plan, or the room's walls have gaps: don't take it
-        if (ratio > 1.8) return;
-        // each side may move in a good way (a box that swallowed an en suite shrinks back), but only a little
-        // way out: a box is rarely too small by much, so a space reaching far past it is a different room
-        const w = x1 - x0, h = y1 - y0, outW = Math.max(0.5 / mpp, 0.2 * w), outH = Math.max(0.5 / mpp, 0.2 * h);
-        const [s0, t0, s1, t1] = sp.px;
-        if (x0 - s0 > outW || s1 - x1 > outW || y0 - t0 > outH || t1 - y1 > outH) return;
-        if (s0 - x0 > 0.45 * w || x1 - s1 > 0.45 * w || t0 - y0 > 0.45 * h || y1 - t1 > 0.45 * h) return;
-        let score = iou(r.px, sp.px);
-        // a small room's box can be off by a good share of its size: the space under the box's middle, if it's
-        // about the same size, is still the room
-        if (l === atMiddle && ratio >= 0.4) score = Math.max(score, 0.5) + 0.1;
-        if (score >= 0.5) pairs.push({ ri, l, score });
-      });
+      const take = [...tally.keys()].filter((l) => !claimed.has(l) && (tally.get(l) / totals.get(l) >= 0.7 || l === atMiddle));
+      if (!take.length) return;
+      const u = take.reduce((b, l) => { const p = E.spaces[l].px; return [Math.min(b[0], p[0]), Math.min(b[1], p[1]), Math.max(b[2], p[2]), Math.max(b[3], p[3])]; }, [Infinity, Infinity, -Infinity, -Infinity]);
+      const ratio = areaOf(u) / (areaOf(r.px) || 1);
+      if (ratio > 1.8 || ratio < 0.4) return;   // open-plan, or a space that isn't this room
+      // each side may move in a good way, but only a little way out (see below)
+      const w = x1 - x0, h = y1 - y0, outW = Math.max(0.5 / mpp, 0.2 * w), outH = Math.max(0.5 / mpp, 0.2 * h);
+      if (x0 - u[0] > outW || u[2] - x1 > outW || y0 - u[1] > outH || u[3] - y1 > outH) return;
+      if (u[0] - x0 > 0.45 * w || x1 - u[2] > 0.45 * w || u[1] - y0 > 0.45 * h || y1 - u[3] > 0.45 * h) return;
+      if (iou(r.px, u) < 0.45 && atMiddle < 0) return;
+      // Give up part of the box only to something real: another room's space, a wall, or the outside. Plain
+      // floor nothing else claims (a shower recess too narrow to count as a space of its own) stays this room's.
+      const others = rooms.filter((o) => o !== r);
+      const inOther = (px, py) => others.some((o) => px >= o.px[0] && px < o.px[2] && py >= o.px[1] && py < o.px[3]);
+      const gives = (sx0, sy0, sx1, sy1) => {
+        let n = 0, real = 0;
+        for (let y = Math.max(0, Math.floor(sy0 / CELL)); y < Math.min(E.GH, Math.ceil(sy1 / CELL)); y++)
+          for (let x = Math.max(0, Math.floor(sx0 / CELL)); x < Math.min(E.GW, Math.ceil(sx1 / CELL)); x++) {
+            const i = y * E.GW + x; n++;
+            if (tr.g[i] < 2 || (E.lab[i] >= 0 && claimed.has(E.lab[i])) || inOther((x + 0.5) * CELL, (y + 0.5) * CELL)) real++;
+          }
+        return n === 0 || real / n >= 0.6;
+      };
+      if (u[0] > x0 && !gives(x0, u[1], u[0], u[3])) u[0] = x0;
+      if (u[2] < x1 && !gives(u[2], u[1], x1, u[3])) u[2] = x1;
+      if (u[1] > y0 && !gives(u[0], y0, u[2], u[1])) u[1] = y0;
+      if (u[3] < y1 && !gives(u[0], u[3], u[2], y1)) u[3] = y1;
+      take.forEach((l) => claimed.add(l));
+      r.px = u; matched++;
     });
-    pairs.sort((a, b) => b.score - a.score);
-    const usedRoom = new Set(), usedSpace = new Set();
-    let matched = 0;
-    for (const p of pairs) {
-      if (usedRoom.has(p.ri) || usedSpace.has(p.l)) continue;
-      usedRoom.add(p.ri); usedSpace.add(p.l); matched++;
-      rooms[p.ri].px = E.spaces[p.l].px.slice();
-    }
     // 2. snap each edge to the wall line nearest it
     const lineScore = (horiz, at, from, to) => {
       const n = Math.max(2, Math.round(Math.abs(to - from) / CELL)); let hit = 0;
@@ -376,8 +386,10 @@
     }
     rooms.forEach((r, i) => { r.px = placed[i].px; r.area = placed[i].area; });
     pruneStrayWalls(tr, rooms, a.mpp);
+    const added = addUnnamedSpaces(tr, rooms, a.mpp);
+    if (added) console.info(`Floor plan: ${added} unlabelled space${added > 1 ? "s" : ""} (a hall or lobby) added as rooms`);
     console.info(`Floor plan: traced walls used (${Math.round(a.quality * 100)}% of room edges on walls; ${a.matched} of ${rooms.length} rooms matched to walled spaces; placed by ${a.how})`);
-    return { tr, mpp: a.mpp, origin: [a.ox * a.mpp, a.oy * a.mpp], image: true, quality: a.quality };
+    return { tr, mpp: a.mpp, origin: [a.ox * a.mpp, a.oy * a.mpp], image: true, quality: a.quality, fromBox: (b) => [b[0] * tr.w, b[1] * tr.h, b[2] * tr.w, b[3] * tr.h] };
   }
 
   // Walls only matter round rooms: anything "wall" more than half a metre from every room is a scale bar,
@@ -530,6 +542,282 @@
     return best.items;
   }
 
+  // Indoor spaces the plan encloses but no room covers: an entrance lobby, a corridor, a landing. Plans often
+  // leave them unlabelled, and without a room they'd be lost (or worse, read as outdoors). Each becomes a hall.
+  function addUnnamedSpaces(tr, rooms, mpp) {
+    const { GW, GH, CELL, g } = tr, cellM = CELL * mpp, covered = new Uint8Array(GW * GH);
+    rooms.forEach((r) => {
+      for (let y = Math.max(0, Math.floor(r.px[1] / CELL)); y < Math.min(GH, Math.ceil(r.px[3] / CELL)); y++)
+        covered.fill(1, y * GW + Math.max(0, Math.floor(r.px[0] / CELL)), y * GW + Math.min(GW, Math.ceil(r.px[2] / CELL)));
+    });
+    // indoor floor no room covers, in connected patches
+    const seen = new Uint8Array(GW * GH), st = [];
+    let added = 0;
+    for (let s = 0; s < g.length; s++) {
+      if (seen[s] || g[s] < 2 || covered[s]) continue;
+      let n = 0, x0 = GW, y0 = GH, x1 = -1, y1 = -1;
+      seen[s] = 1; st.push(s);
+      while (st.length) {
+        const i = st.pop(), x = i % GW, y = (i / GW) | 0;
+        n++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        for (const j of [x > 0 ? i - 1 : -1, x < GW - 1 ? i + 1 : -1, i - GW, i + GW]) if (j >= 0 && j < g.length && !seen[j] && g[j] >= 2 && !covered[j]) { seen[j] = 1; st.push(j); }
+      }
+      const w = (x1 - x0 + 1) * cellM, d = (y1 - y0 + 1) * cellM, area = n * cellM * cellM;
+      // a room-sized patch, at least corridor width (0.9 m), that mostly fills its outline: not a sliver left
+      // between two rooms' boxes
+      if (area < 1.2 || Math.min(w, d) < 0.9 || area / (w * d) < 0.55) continue;
+      const k = rooms.filter((r) => r.auto).length + 1, id = `hall-${k}`;
+      const px = [x0 * CELL, y0 * CELL, (x1 + 1) * CELL, (y1 + 1) * CELL];
+      rooms.push({ id, name: k === 1 ? "Hall" : `Hall ${k}`, type: "hall", auto: true, px, area: (px[2] - px[0]) * (px[3] - px[1]),
+        src: { id, name: "Hall", x: 0, y: 0, width: w, depth: d } });
+      added++;
+    }
+    return added;
+  }
+
+  // A hall's door-sized opening to the outside is its front door, not a window: close it with wall. (Halls have
+  // no windows on most plans; the door leaf drawn swinging outwards would otherwise show as diagonal glass.)
+  function closeFrontDoors(tr, rooms, mpp) {
+    const { GW, GH, CELL, g } = tr, cm = CELL * mpp, maxRun = Math.round(1.6 / cm), depth = Math.max(2, Math.round(0.25 / cm));
+    let closed = 0;
+    rooms.filter((r) => r.type === "hall").forEach((r) => {
+      const x0 = Math.floor(r.px[0] / CELL), y0 = Math.floor(r.px[1] / CELL), x1 = Math.ceil(r.px[2] / CELL) - 1, y1 = Math.ceil(r.px[3] / CELL) - 1;
+      const at = (x, y) => (x < 0 || y < 0 || x >= GW || y >= GH ? 0 : g[y * GW + x]);
+      const sides = [
+        { n: x1 - x0 + 1, cell: (k, d) => [x0 + k, y0 - 1 - d] }, { n: x1 - x0 + 1, cell: (k, d) => [x0 + k, y1 + 1 + d] },
+        { n: y1 - y0 + 1, cell: (k, d) => [x0 - 1 - d, y0 + k] }, { n: y1 - y0 + 1, cell: (k, d) => [x1 + 1 + d, y0 + k] },
+      ];
+      for (const s of sides) {
+        // runs along this side where what's just beyond the room is outside
+        let k = 0;
+        while (k < s.n) {
+          // an opening: outside just beyond the room's edge, and no wall on the edge itself (a hall box drawn
+          // over its wall has wall there, and that's not a door)
+          const open = (j) => {
+            for (let d = -2; d < 0; d++) { const [x, y] = s.cell(j, d); if (at(x, y) === 1) return false; }
+            for (let d = 0; d < 2; d++) { const [x, y] = s.cell(j, d); if (at(x, y) === 0) return true; }
+            return false;
+          };
+          if (!open(k)) { k++; continue; }
+          let e = k; while (e < s.n && open(e)) e++;
+          if (e - k <= maxRun) {
+            for (let j = Math.max(0, k - 1); j < Math.min(s.n, e + 1); j++) for (let d = 0; d < depth; d++) {
+              const [x, y] = s.cell(j, d);
+              if (x >= 0 && y >= 0 && x < GW && y < GH && g[y * GW + x] !== 1) g[y * GW + x] = 1;
+            }
+            closed++;
+          }
+          k = e;
+        }
+      }
+      // and anything outside inside the hall itself (between a drawn door leaf and the wall) is hall floor
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (at(x, y) === 0) g[y * GW + x] = 2;
+    });
+    return closed;
+  }
+
+  // ---- furniture that fits ----
+  // Size of each kind of piece on the floor, in metres: [along its back, front to back].
+  const dimsOf = (it) => {
+    const o = it, n = (v, d) => (typeof v === "number" && v > 0 ? v : d);
+    switch (it.type) {
+      case "sofa": return [n(o.len, 2.4), 0.95];
+      case "armchair": return [0.85, 0.85];
+      case "ottoman": return [n(o.w, 1), n(o.d, 0.8)];
+      case "coffeeRound": case "roundShelf": { const r = n(o.r, 0.5); return [r * 2, r * 2]; }
+      case "coffee": return [n(o.w, 1.1), n(o.d, 0.6)];
+      case "sideboard": return [n(o.len, 2), 0.5];
+      case "tv": return [n(o.len, 2.1), 0.45];
+      case "shelving": return [n(o.len, 2.4), 0.4];
+      case "bookcase": return [n(o.len, 2.2), 0.38];
+      case "table": return [n(o.w, 2), n(o.d, 1) + ((o.chairs ?? 3) > 0 ? 1.1 : 0)];
+      case "roundTable": { const r = n(o.r, 0.5); return [r * 2 + 0.9, r * 2 + 0.9]; }
+      case "chair": return [0.5, 0.5];
+      case "island": return [n(o.w, 1.3), n(o.d, 2.4)];
+      case "counter": return [n(o.len, 3), 0.62];
+      case "bed": return [n(o.w, 1.8) + 0.16, n(o.l, 2.1) + 0.1];
+      case "nightstand": return [0.5, 0.42];
+      case "bench": return [n(o.len, 1.5), 0.45];
+      case "dresser": return [n(o.len, 1.4), 0.5];
+      case "wardrobe": return [n(o.len, 2), 0.62];
+      case "desk": return [n(o.w, 1.6), 1.25];
+      case "console": return [n(o.len, 1.6), 0.4];
+      case "bath": return [n(o.len, 1.7), n(o.w, 0.8)];
+      case "vanity": return [n(o.len, 1.4), 0.55];
+      case "wc": return [0.42, 0.72];
+      case "shower": return [n(o.w, 0.9), n(o.d, 0.9)];
+      case "floorLamp": case "plant": return [0.45, 0.45];
+      case "lounger": return [0.7, 2];
+      case "planter": return [n(o.len, 2), 0.45];
+      case "hottub": return [n(o.w, 2.2), n(o.w, 2.2)];
+      default: return null;   // rugs, pictures: anywhere
+    }
+  };
+  // which plan fixture stands for which pieces
+  const COVERS = { kitchen_run: ["counter"], island: ["island"], bath: ["bath"], shower: ["shower", "bath"], wc: ["wc"], basin: ["vanity"], bed: ["bed"], wardrobe: ["wardrobe"], sofa: ["sofa"], table: ["table", "roundTable"] };
+
+  // A fixture drawn on the plan, built where it's drawn: its back to the nearest wall, its size from the drawing.
+  function fixtureItem(f, px, roomId, grid) {
+    const [x0, y0, x1, y1] = px, mpp = grid.mpp, w = (x1 - x0) * mpp, d = (y1 - y0) * mpp, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    if (!(w > 0.15 && d > 0.15)) return null;
+    const isWall = (x, y) => grid.at(x, y) < 2;
+    const backing = (side) => {   // how much wall is right behind this side (sampled along it)
+      let hits = 0;
+      for (let k = 1; k <= 5; k++) {
+        const t = k / 6;
+        for (const reach of [0.08, 0.2, 0.32]) {
+          const p = reach / mpp;
+          const [x, y] = side === "up" ? [x0 + (x1 - x0) * t, y0 - p] : side === "down" ? [x0 + (x1 - x0) * t, y1 + p] : side === "left" ? [x0 - p, y0 + (y1 - y0) * t] : [x1 + p, y0 + (y1 - y0) * t];
+          if (isWall(x, y)) { hits++; break; }
+        }
+      }
+      return hits;
+    };
+    const sides = ["up", "down", "left", "right"].map((s) => [s, backing(s)]).sort((a, b) => b[1] - a[1]);
+    // long, thin pieces (worktops, wardrobes, baths) have their back along a long side
+    const long = w >= d ? ["up", "down"] : ["left", "right"];
+    let side = sides[0][0];
+    if (["kitchen_run", "wardrobe", "bath", "sofa"].includes(f.type)) { const s = sides.find(([s]) => long.includes(s)); if (s && s[1] > 0) side = s[0]; }
+    const ROT = { up: 0, down: 180, left: 90, right: 270 };
+    const along = side === "up" || side === "down" ? w : d, deep = side === "up" || side === "down" ? d : w;
+    const base = { room: roomId, x: Math.round(cx * 10) / 10, y: Math.round(cy * 10) / 10, rot: ROT[side], fromPlan: true };
+    const r2 = (v) => Math.round(v * 100) / 100;
+    switch (f.type) {
+      case "kitchen_run": return Object.assign(base, { type: "counter", len: r2(Math.max(0.6, along)) });
+      case "island": return Object.assign(base, { type: "island", rot: 0, w: r2(w), d: r2(d) });
+      case "bath": return Object.assign(base, { type: "bath", len: r2(Math.min(2, Math.max(1.4, along))), w: r2(Math.min(0.9, Math.max(0.65, deep))) });
+      case "shower": return Object.assign(base, { type: "shower", w: r2(Math.max(0.7, along)), d: r2(Math.max(0.7, deep)) });
+      case "wc": return Object.assign(base, { type: "wc" });
+      case "basin": return Object.assign(base, { type: "vanity", len: r2(Math.min(1.6, Math.max(0.5, along))), basins: along > 1.2 ? 2 : 1 });
+      case "bed": return Object.assign(base, { type: "bed", w: r2(Math.min(2, Math.max(0.9, along))), l: r2(Math.min(2.3, Math.max(1.8, deep))) });
+      case "wardrobe": return Object.assign(base, { type: "wardrobe", len: r2(Math.max(0.6, along)) });
+      case "sofa": return Object.assign(base, { type: "sofa", len: r2(Math.min(3.6, Math.max(1.4, along))) });
+      case "table": { const lw = Math.max(w, d), sw = Math.min(w, d); return Object.assign(base, { type: "table", rot: w >= d ? 0 : 90, w: r2(Math.max(0.8, lw)), d: r2(Math.max(0.7, Math.min(1.2, sw))), chairs: Math.max(0, Math.min(4, Math.floor(lw / 0.65))) }); }
+    }
+    return null;
+  }
+
+  // The plan's fixtures, as pieces, room by room.
+  function planFixtures(plan, rooms, built, grid) {
+    const out = {};
+    for (const f of plan.fixtures || []) {
+      let px = null;
+      if (built.fromBox && Array.isArray(f.box)) px = built.fromBox(f.box);
+      else if (built.toPx && [f.x, f.y, f.width, f.depth].every(Number.isFinite)) { const a = built.toPx(f.x, f.y), b = built.toPx(f.x + f.width, f.y + f.depth); px = [a[0], a[1], b[0], b[1]]; }
+      if (!px) continue;
+      const cx = (px[0] + px[2]) / 2, cy = (px[1] + px[3]) / 2;
+      // its room: the one the plan says, or else the smallest room it's in
+      let room = rooms.find((r) => r.id === f.room);
+      const inside = (r) => cx >= r.px[0] && cx <= r.px[2] && cy >= r.px[1] && cy <= r.px[3];
+      if (!room || !inside(room)) room = rooms.filter(inside).sort((a, b) => a.area - b.area)[0];
+      if (!room) continue;
+      const it = fixtureItem(f, px, room.id, grid);
+      if (it) (out[room.id] = out[room.id] || []).push(it);
+    }
+    return out;
+  }
+
+  // A grid to check placements against: the built model's (1 wall, 0 outside, 2+ floor), in plan pixels.
+  function gridOf(model) {
+    const g = T.decodeGrid(model.grid), GW = model.grid.w, GH = model.grid.h, C = model.cell;
+    return { mpp: model.metresPerPx, at: (x, y) => { const cx = Math.floor(x / C), cy = Math.floor(y / C); return cx < 0 || cy < 0 || cx >= GW || cy >= GH ? 0 : g[cy * GW + cx]; } };
+  }
+
+  // Put a room's pieces where they fit: on floor, inside the room, clear of each other and of its doorways.
+  // The plan's own fixtures are fixed; anything else that doesn't fit where it was put is moved to the nearest
+  // spot that does (turning it if need be), or left out if nowhere does.
+  function settle(items, room, grid) {
+    const mpp = grid.mpp, m = (v) => v / mpp, [rx0, ry0, rx1, ry1] = room.px;
+    // doorways: points on the room's edge with floor carrying on beyond the wall
+    const doors = [];
+    const probe = (px, py, nx, ny) => {
+      for (let d = -0.3; d <= 0.3; d += 0.06) if (grid.at(px + nx * m(d), py + ny * m(d)) === 1) return;
+      if (grid.at(px + nx * m(0.5), py + ny * m(0.5)) >= 2 && grid.at(px - nx * m(0.5), py - ny * m(0.5)) >= 2) doors.push([px, py]);
+    };
+    const step = m(0.1);
+    for (let x = rx0 + m(0.2); x <= rx1 - m(0.2); x += step) { probe(x, ry0, 0, -1); probe(x, ry1, 0, 1); }
+    for (let y = ry0 + m(0.2); y <= ry1 - m(0.2); y += step) { probe(rx0, y, -1, 0); probe(rx1, y, 1, 0); }
+    const rectOf = (it, x, y, rot) => {
+      const [a, b] = dimsOf(it), turned = (((rot || 0) % 180) + 180) % 180 === 90, hw = m(turned ? b : a) / 2, hd = m(turned ? a : b) / 2;
+      return [x - hw, y - hd, x + hw, y + hd];
+    };
+    const placed = [];
+    const fits = (r, own) => {
+      const inset = m(0.04);
+      if (r[0] < rx0 - m(0.1) || r[1] < ry0 - m(0.1) || r[2] > rx1 + m(0.1) || r[3] > ry1 + m(0.1)) return false;
+      for (let y = r[1] + inset; y <= r[3] - inset; y += m(0.08)) for (let x = r[0] + inset; x <= r[2] - inset; x += m(0.08)) if (grid.at(x, y) < 2) return false;
+      for (const p of placed) if (p !== own && r[0] < p[2] - m(0.05) && p[0] < r[2] - m(0.05) && r[1] < p[3] - m(0.05) && p[1] < r[3] - m(0.05)) return false;
+      for (const [dx, dy] of doors) {
+        const ex = Math.max(r[0] - dx, 0, dx - r[2]), ey = Math.max(r[1] - dy, 0, dy - r[3]);
+        if (Math.hypot(ex, ey) < m(0.5)) return false;
+      }
+      for (const c of keepClear) if (r[0] < c[2] && c[0] < r[2] && r[1] < c[3] && c[1] < r[3]) return false;
+      return true;
+    };
+    // the space you stand in to use a fitted unit (open a wardrobe, cook, wash) stays clear: 0.6 m in front of it
+    const keepClear = [];
+    const FITTED = new Set(["wardrobe", "counter", "vanity", "wc", "bath", "shower", "island", "dresser"]);
+    const frontZone = (it) => {
+      const [x0, y0, x1, y1] = rectOf(it, it.x, it.y, it.rot), c = m(0.6), rot = ((((it.rot || 0) % 360) + 360) % 360);
+      return rot === 0 ? [x0, y1, x1, y1 + c] : rot === 180 ? [x0, y0 - c, x1, y0] : rot === 90 ? [x1, y0, x1 + c, y1] : [x0 - c, y0, x0, y1];
+    };
+    const out = [];
+    const fixed = items.filter((it) => it.fromPlan), loose = items.filter((it) => !it.fromPlan);
+    for (const it of fixed) {
+      const r = dimsOf(it) && rectOf(it, it.x, it.y, it.rot);
+      if (r) placed.push(r);
+      if (r && FITTED.has(it.type)) keepClear.push(it.type === "island" ? [r[0] - m(0.5), r[1] - m(0.5), r[2] + m(0.5), r[3] + m(0.5)] : frontZone(it));
+      out.push(it);
+    }
+    // biggest first: they're the hardest to fit
+    const size = (it) => { const d = dimsOf(it); return d ? d[0] * d[1] : 0; };
+    loose.sort((a, b) => size(b) - size(a));
+    // is there wall right behind this piece (its back is the side away from its front)?
+    const backed = (r, rot) => {
+      const b = m(0.12), [x0, y0, x1, y1] = r, n = 6;
+      let hits = 0;
+      for (let k = 1; k < n; k++) {
+        const t = k / n;
+        const [x, y] = rot === 0 ? [x0 + (x1 - x0) * t, y0 - b] : rot === 180 ? [x0 + (x1 - x0) * t, y1 + b] : rot === 90 ? [x0 - b, y0 + (y1 - y0) * t] : [x1 + b, y0 + (y1 - y0) * t];
+        if (grid.at(x, y) === 1) hits++;   // solid wall: not a window, not a doorway
+      }
+      return hits >= (n - 1) * 0.6;
+    };
+    const WALL_ONLY = new Set(["bookcase", "shelving", "sideboard", "tv", "dresser", "console", "wardrobe", "vanity", "wc", "counter", "nightstand"]);
+    const WALL_FIRST = new Set(["bed", "sofa", "desk", "bath"]);
+    for (const it of loose) {
+      if (!dimsOf(it)) { out.push(it); continue; }   // rugs and pictures go where they were put
+      let spot = null;
+      const rots = [it.rot || 0, (it.rot || 0) + 180, (it.rot || 0) + 90, (it.rot || 0) + 270].map((v) => ((v % 360) + 360) % 360);
+      const needWall = WALL_ONLY.has(it.type) || WALL_FIRST.has(it.type);
+      for (const wantWall of needWall ? (WALL_ONLY.has(it.type) ? [true] : [true, false]) : [false]) {
+        search: for (let rad = 0; rad <= 2.2; rad += 0.1) {
+          const n = rad ? Math.max(8, Math.round(rad * 24)) : 1;
+          for (const rot of rad ? rots : [rots[0]]) for (let k = 0; k < n; k++) {
+            const a = (k / n) * Math.PI * 2, x = it.x + Math.cos(a) * m(rad), y = it.y + Math.sin(a) * m(rad), r = rectOf(it, x, y, rot);
+            if (fits(r) && (!wantWall || backed(r, rot))) { spot = { x, y, rot, r }; break search; }
+          }
+        }
+        if (spot) break;
+      }
+      if (!spot) continue;   // nowhere it fits: better left out than standing in a wall or a doorway
+      placed.push(spot.r);
+      out.push(Object.assign({}, it, { x: Math.round(spot.x * 10) / 10, y: Math.round(spot.y * 10) / 10, rot: spot.rot }));
+    }
+    return out;
+  }
+
+  // A room's furniture: the plan's fixtures, plus the given pieces (from the photos, or typical ones) that the
+  // fixtures don't already stand for, all settled so they fit.
+  function furnishRoom(room, fixtures, pieces, grid) {
+    const covered = new Set((fixtures || []).flatMap((f) => COVERS[Object.keys(COVERS).find((k) => fixtureType(f) === k)] || []));
+    const keep = pieces.filter((it) => !covered.has(it.type));
+    return settle((fixtures || []).concat(keep), room, grid);
+  }
+  const fixtureType = (it) => ({ counter: "kitchen_run", island: "island", bath: "bath", shower: "shower", wc: "wc", vanity: "basin", bed: "bed", wardrobe: "wardrobe", sofa: "sofa", table: "table" })[it.type];
+
+  const rooms_px = (P, room) => { const b = boxOf(room); return { id: room.id, px: b }; };
+
   // indoor floor area of the built flat, in square metres (terraces not included)
   function floorArea(model) {
     const g = T.decodeGrid(model.grid), cellM = model.cell * model.metresPerPx;
@@ -546,10 +834,15 @@
     let built = null;
     if (project.planImage && project.planIsImage) { try { built = await tracedModel(project.planImage, plan, rooms); } catch { built = null; } }
     if (!built) built = syntheticModel(plan, rooms);
+    const frontDoors = closeFrontDoors(built.tr, rooms, built.mpp);
+    if (frontDoors) console.info(`Floor plan: ${frontDoors} front door${frontDoors > 1 ? "s" : ""} closed (not shown as windows)`);
     const doorsCut = ensureConnected(built.tr, rooms, built.mpp);
     if (doorsCut) console.info(`Floor plan: ${doorsCut} doorway${doorsCut > 1 ? "s" : ""} added so every room can be reached`);
     const model = U.buildModel(built.tr, rooms, built.mpp);
     model.windows = "punched";   // ordinary windows (wall below the sill and above the head), not floor-to-ceiling glass
+    const grid = gridOf(model);
+    const fixtures = planFixtures(plan, rooms, built, grid);
+    T.vedutaFixtures = fixtures;   // the photo furnishing keeps these too
     const near = (a, b) => !(a.px[2] + 8 < b.px[0] || b.px[2] + 8 < a.px[0] || a.px[3] + 8 < b.px[1] || b.px[3] + 8 < a.px[1]);
     const photos = project.photos || {}, panos = project.panoramas || {};
     const scanned = (id) => project.modelUrl && (photos[id] || []).length > 0;
@@ -586,7 +879,7 @@
       entryRoom: entry, startRoom: start,
       floors: [{ id: "plan", name: "Floor plan", plan: built.image ? project.planImage : null, planSize: { w: built.tr.w, h: built.tr.h } }],
       rooms: outRooms, model,
-      furnishing: rooms.flatMap((r) => starterThatFits(U, r, built.tr, built.mpp)),
+      furnishing: rooms.flatMap((r) => furnishRoom(r, fixtures[r.id], starterThatFits(U, r, built.tr, built.mpp), grid)),
     };
     try { autoViews(property); } catch (e) { console.warn("Viewpoints couldn’t be worked out", e); }
     return property;
@@ -817,7 +1110,7 @@
         const res = await T.embedRequest("veduta:furnish", { roomId: room.id });
         const out = T.uploadsInternals.toFurnishing(T.P, room, res);
         const art = await artPieces(T.P, room, res);
-        out.furnishing = out.furnishing.concat(art);
+        out.furnishing = furnishRoom(rooms_px(T.P, room), (T.vedutaFixtures || {})[room.id], out.furnishing, gridOf(T.P.model)).concat(art);
         const next = JSON.parse(JSON.stringify(T.state || { rooms: {} }));
         next.rooms = next.rooms || {};
         next.rooms[room.id] = Object.assign({}, next.rooms[room.id], { furnishing: out.furnishing.length ? out.furnishing : undefined, floorClass: out.floorClass, wallColor: out.wallColor || undefined });
@@ -872,7 +1165,12 @@
       const art = await artPieces(P, room, res);
       if (!out.count && !art.length && !out.floorClass && !out.wallColor) continue;
       const patch = {};
-      if (out.count || art.length) patch.furnishing = out.furnishing.concat(art);
+      if (out.count || art.length) {
+        const fx = (T.vedutaFixtures || {})[room.id] || [];
+        const settled = furnishRoom(rooms_px(P, room), fx, out.furnishing, gridOf(P.model));
+        patch.furnishing = settled.concat(art);
+        out.count = settled.filter((it) => !it.fromPlan).length;   // what actually fitted
+      }
       pictures += art.length;
       if (out.floorClass) patch.floorClass = out.floorClass;
       if (out.wallColor) patch.wallColor = out.wallColor;
