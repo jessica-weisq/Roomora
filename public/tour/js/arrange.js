@@ -271,6 +271,7 @@
       const snap = () => JSON.stringify(pieces());
       function commit() {
         const now = snap();
+        if (base !== null && now !== base) T.emit("tour:design-changed", { kind: "furniture" });
         if (base !== null && now !== base) { undo.push(base); if (undo.length > 60) undo.shift(); }
         base = now;
         $(".ar-undo").disabled = !undo.length;
@@ -290,6 +291,7 @@
       $(".ar-undo").addEventListener("click", doUndo);
       function doUndo() {
         if (!undo.length) return;
+        T.emit("tour:design-changed", { kind: "furniture" });
         restore(JSON.parse(undo.pop()));
         base = snap(); $(".ar-undo").disabled = !undo.length;
         clearTimeout(saveTimer); saveTimer = setTimeout(save, 400);

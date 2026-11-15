@@ -375,8 +375,159 @@
       return null;
     }
     rooms.forEach((r, i) => { r.px = placed[i].px; r.area = placed[i].area; });
+    pruneStrayWalls(tr, rooms, a.mpp);
     console.info(`Floor plan: traced walls used (${Math.round(a.quality * 100)}% of room edges on walls; ${a.matched} of ${rooms.length} rooms matched to walled spaces; placed by ${a.how})`);
     return { tr, mpp: a.mpp, origin: [a.ox * a.mpp, a.oy * a.mpp], image: true, quality: a.quality };
+  }
+
+  // Walls only matter round rooms: anything "wall" more than half a metre from every room is a scale bar,
+  // a logo, a key or a neighbour's outline, and would stand in the view out of the windows.
+  function pruneStrayWalls(tr, rooms, mpp) {
+    const { GW, GH, CELL, g } = tr, pad = 0.5 / mpp;
+    const keep = new Uint8Array(GW * GH);
+    rooms.forEach((r) => {
+      const x0 = Math.max(0, Math.floor((r.px[0] - pad) / CELL)), y0 = Math.max(0, Math.floor((r.px[1] - pad) / CELL));
+      const x1 = Math.min(GW - 1, Math.ceil((r.px[2] + pad) / CELL)), y1 = Math.min(GH - 1, Math.ceil((r.px[3] + pad) / CELL));
+      for (let y = y0; y <= y1; y++) keep.fill(1, y * GW + x0, y * GW + x1 + 1);
+    });
+    for (let i = 0; i < g.length; i++) if (g[i] === 1 && !keep[i]) g[i] = 0;
+    // Likewise "indoor" patches that belong to no room and touch no room's floor: a compass ring, a key or a
+    // logo's outline encloses white paper, which the tracing reads as indoors. Unlabelled corridors and
+    // cupboards do touch rooms (through their doorways), so they stay.
+    const inRoom = new Uint8Array(GW * GH);
+    rooms.forEach((r) => {
+      for (let y = Math.max(0, Math.floor(r.px[1] / CELL)); y < Math.min(GH, Math.ceil(r.px[3] / CELL)); y++)
+        inRoom.fill(1, y * GW + Math.max(0, Math.floor(r.px[0] / CELL)), y * GW + Math.min(GW, Math.ceil(r.px[2] / CELL)));
+    });
+    const seen = new Uint8Array(GW * GH), st = [];
+    for (let s = 0; s < g.length; s++) {
+      if (seen[s] || g[s] < 2 || inRoom[s]) continue;
+      const cells = []; let touches = false;
+      seen[s] = 1; st.push(s);
+      while (st.length) {
+        const i = st.pop(), x = i % GW; cells.push(i);
+        for (const j of [x > 0 ? i - 1 : -1, x < GW - 1 ? i + 1 : -1, i - GW, i + GW]) {
+          if (j < 0 || j >= g.length || g[j] < 2) continue;
+          if (inRoom[j]) { touches = true; continue; }
+          if (!seen[j]) { seen[j] = 1; st.push(j); }
+        }
+      }
+      if (!touches) for (const i of cells) g[i] = 0;
+    }
+  }
+
+  // Every room must be reachable on foot. A doorway only exists where the drawing leaves a gap, and plans
+  // often don't (the door is drawn shut, a label sits in the opening, the tracing closes a narrow gap). So:
+  // walk outwards from the hall, and for each room that can't be reached, cut a doorway (0.85 m) through the
+  // wall it shares with a room that can, preferring the hall, at a spot with clear floor on both sides.
+  function ensureConnected(tr, rooms, mpp) {
+    const { GW, GH, CELL, g } = tr, cm = CELL * mpp, rad = Math.max(1, Math.ceil(0.25 / cm));
+    if (rooms.length < 2) return 0;
+    const owner = new Int16Array(GW * GH).fill(-1);
+    rooms.map((r, i) => i).sort((a, b) => rooms[b].area - rooms[a].area).forEach((i) => {
+      const [x0, y0, x1, y1] = rooms[i].px;
+      for (let y = Math.max(0, Math.floor(y0 / CELL)); y < Math.min(GH, Math.ceil(y1 / CELL)); y++)
+        for (let x = Math.max(0, Math.floor(x0 / CELL)); x < Math.min(GW, Math.ceil(x1 / CELL)); x++) owner[y * GW + x] = i;
+    });
+    const floor = (i) => g[i] !== 1 && (g[i] >= 2 || owner[i] >= 0);
+    const walkable = () => {   // floor with room for a person
+      const ok = new Uint8Array(GW * GH);
+      for (let y = rad; y < GH - rad; y++) for (let x = rad; x < GW - rad; x++) {
+        let f = floor(y * GW + x) ? 1 : 0;
+        for (let dy = -rad; dy <= rad && f; dy++) for (let dx = -rad; dx <= rad; dx++) if (!floor((y + dy) * GW + x + dx)) { f = 0; break; }
+        ok[y * GW + x] = f;
+      }
+      return ok;
+    };
+    const startIdx = (() => { const hall = rooms.findIndex((r) => r.type === "hall"); return hall >= 0 ? hall : rooms.reduce((b, r, i) => (r.area > rooms[b].area ? i : b), 0); })();
+    const reachedRooms = (ok) => {
+      const seen = new Uint8Array(GW * GH), st = [], got = new Uint8Array(rooms.length);
+      for (let i = 0; i < owner.length; i++) if (owner[i] === startIdx && ok[i]) { seen[i] = 1; st.push(i); break; }
+      while (st.length) {
+        const i = st.pop(); if (owner[i] >= 0) got[owner[i]] = 1;
+        for (const j of [i - 1, i + 1, i - GW, i + GW]) if (ok[j] && !seen[j]) { seen[j] = 1; st.push(j); }
+      }
+      got[startIdx] = 1;
+      return got;
+    };
+    const gapMax = 0.7 / mpp, doorPx = 0.85 / mpp, inPx = 0.45 / mpp;
+    let cut = 0;
+    for (let round = 0; round < rooms.length * 2; round++) {
+      const ok = walkable(), got = reachedRooms(ok);
+      if (got.every((v) => v)) break;
+      const okAt = (px, py) => { const cx = Math.floor(px / CELL), cy = Math.floor(py / CELL); return cx >= 0 && cy >= 0 && cx < GW && cy < GH && ok[cy * GW + cx]; };
+      let best = null;
+      rooms.forEach((u, ui) => {
+        if (got[ui]) return;
+        rooms.forEach((v, vi) => {
+          if (!got[vi]) return;
+          const [ux0, uy0, ux1, uy1] = u.px, [vx0, vy0, vx1, vy1] = v.px;
+          // side by side (a wall running up the plan between them), or one above the other
+          const tries = [
+            { horiz: false, gap: Math.max(vx0 - ux1, ux0 - vx1), lo: Math.max(uy0, vy0), hi: Math.min(uy1, vy1), a: ux1 <= vx0 + gapMax && ux1 < vx1 ? Math.min(ux1, vx0) : Math.min(vx1, ux0), b: ux1 <= vx0 + gapMax && ux1 < vx1 ? Math.max(ux1, vx0) : Math.max(vx1, ux0) },
+            { horiz: true, gap: Math.max(vy0 - uy1, uy0 - vy1), lo: Math.max(ux0, vx0), hi: Math.min(ux1, vx1), a: uy1 <= vy0 + gapMax && uy1 < vy1 ? Math.min(uy1, vy0) : Math.min(vy1, uy0), b: uy1 <= vy0 + gapMax && uy1 < vy1 ? Math.max(uy1, vy0) : Math.max(vy1, uy0) },
+          ];
+          for (const t of tries) {
+            if (t.gap > gapMax || t.gap < -gapMax || t.hi - t.lo < doorPx + 2 * CELL) continue;
+            // along the shared wall, the spot nearest its middle with clear floor a step into each room
+            const mid = (t.lo + t.hi) / 2, half = (t.hi - t.lo - doorPx) / 2;
+            let at = null;
+            for (let d = 0; d <= half && at === null; d += CELL) for (const s of d ? [d, -d] : [0]) {
+              const p = mid + s, clearA = t.horiz ? okAt(p, t.a - inPx) : okAt(t.a - inPx, p), clearB = t.horiz ? okAt(p, t.b + inPx) : okAt(t.b + inPx, p);
+              if (clearA && clearB) { at = p; break; }
+            }
+            const score = (v.type === "hall" ? 1000 : 0) + (at !== null ? 500 : 0) + (t.hi - t.lo) * mpp - Math.abs(t.gap) * mpp;
+            if (!best || score > best.score) best = { score, t, at: at !== null ? at : mid };
+          }
+        });
+      });
+      if (!best) break;   // an unreached room touches no reached one: leave it (the plan button still jumps there)
+      const { t, at } = best, a = t.a - inPx, b = t.b + inPx;
+      const [x0, x1, y0, y1] = t.horiz ? [at - doorPx / 2, at + doorPx / 2, a, b] : [a, b, at - doorPx / 2, at + doorPx / 2];
+      for (let y = Math.max(0, Math.floor(y0 / CELL)); y <= Math.min(GH - 1, Math.floor(y1 / CELL)); y++)
+        for (let x = Math.max(0, Math.floor(x0 / CELL)); x <= Math.min(GW - 1, Math.floor(x1 / CELL)); x++) g[y * GW + x] = 2;
+      cut++;
+    }
+    return cut;
+  }
+
+  // Typical furniture for a room, turned to suit it. The stock layout assumes the room's top wall is the one
+  // to furnish against, which puts baths across doorways and mirrors over windows. So the layout is tried
+  // facing each of the four walls, and the one that keeps pieces out of doorways, off window walls (tall pieces
+  // and bedheads) and on the floor is used.
+  const FOOTPRINT = { bed: 1.2, sofa: 1.2, table: 1.2, island: 1.1, counter: 1.0, wardrobe: 0.9, bath: 0.9, bookcase: 0.9, sideboard: 0.9, tv: 0.9, shelving: 0.9, vanity: 0.8, desk: 0.8 };
+  const AGAINST_A_WALL = new Set(["wardrobe", "vanity", "bookcase", "shelving", "tv", "bed", "counter", "sideboard"]);
+  function starterThatFits(U, r, tr, mpp) {
+    const [x0, y0, x1, y1] = r.px, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, w = x1 - x0, h = y1 - y0;
+    const { GW, GH, CELL, g } = tr, m = (v) => v / mpp;
+    const cell = (px, py) => { const gx = Math.floor(px / CELL), gy = Math.floor(py / CELL); return gx < 0 || gy < 0 || gx >= GW || gy >= GH ? 0 : g[gy * GW + gx]; };
+    // what each point of the room's edge is: wall, a doorway (floor carries on beyond), or a window
+    const doors = [], wins = [];
+    const look = (px, py, nx, ny) => {
+      for (let d = -0.3; d <= 0.3; d += 0.06) if (cell(px + nx * m(d), py + ny * m(d)) === 1) return;
+      (cell(px + nx * m(0.5), py + ny * m(0.5)) >= 2 ? doors : wins).push([px, py]);
+    };
+    for (let x = x0 + m(0.2); x <= x1 - m(0.2); x += CELL) { look(x, y0, 0, -1); look(x, y1, 0, 1); }
+    for (let y = y0 + m(0.2); y <= y1 - m(0.2); y += CELL) { look(x0, y, -1, 0); look(x1, y, 1, 0); }
+    const nearAny = (pts, it, reach) => pts.some((p) => Math.hypot(p[0] - it.x, p[1] - it.y) < reach);
+    let best = null;
+    for (const turn of [0, 90, 180, 270]) {
+      const sw = turn % 180 ? h : w, sh = turn % 180 ? w : h, a = (turn * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+      const items = U.starter(Object.assign({}, r, { px: [cx - sw / 2, cy - sh / 2, cx + sw / 2, cy + sh / 2] }), r.type, mpp).map((it) => {
+        const dx = it.x - cx, dy = it.y - cy;
+        return Object.assign({}, it, { x: cx + dx * c - dy * s, y: cy + dx * s + dy * c, rot: ((((it.rot || 0) - turn) % 360) + 360) % 360 });
+      });
+      let penalty = 0;
+      for (const it of items) {
+        if (it.type === "rug") continue;
+        const reach = m(FOOTPRINT[it.type] || 0.6);
+        if (cell(it.x, it.y) < 2) penalty += 20;
+        if (nearAny(doors, it, reach + m(0.35))) penalty += 10;
+        if (AGAINST_A_WALL.has(it.type) && nearAny(wins, it, reach)) penalty += it.type === "bed" ? 2 : 5;
+      }
+      if (!best || penalty < best.penalty) best = { penalty, items };
+    }
+    return best.items;
   }
 
   // indoor floor area of the built flat, in square metres (terraces not included)
@@ -395,6 +546,8 @@
     let built = null;
     if (project.planImage && project.planIsImage) { try { built = await tracedModel(project.planImage, plan, rooms); } catch { built = null; } }
     if (!built) built = syntheticModel(plan, rooms);
+    const doorsCut = ensureConnected(built.tr, rooms, built.mpp);
+    if (doorsCut) console.info(`Floor plan: ${doorsCut} doorway${doorsCut > 1 ? "s" : ""} added so every room can be reached`);
     const model = U.buildModel(built.tr, rooms, built.mpp);
     model.windows = "punched";   // ordinary windows (wall below the sill and above the head), not floor-to-ceiling glass
     const near = (a, b) => !(a.px[2] + 8 < b.px[0] || b.px[2] + 8 < a.px[0] || a.px[3] + 8 < b.px[1] || b.px[3] + 8 < a.px[1]);
@@ -406,7 +559,7 @@
       // photos become 3D photos when the backend can make depth maps (GET /depth/{project}/{photo}.png)
       const far = Math.max(5, Math.hypot(r.src.width, r.src.depth) * 1.25);
       const media = (photos[r.id] || []).map((p) => Object.assign({ type: "photo", src: p.url, name: p.name },
-        project.depthBase ? { depth: `${project.depthBase}/${encodeURIComponent(p.id)}.png`, depthRange: [0.8, far], hfov: 70 } : {}));
+        project.depthBase ? { depth: `${project.depthBase}/${encodeURIComponent(p.id)}.png`, depthRange: [1.3, far], hfov: 70, depthAuto: true } : {}));
       if (panos[r.id]) media.push({ type: "pano", src: panos[r.id], label: "AI-generated 360° view" });
       return {
         id: r.id, name: r.name, floor: "plan", type: r.type,
@@ -433,7 +586,7 @@
       entryRoom: entry, startRoom: start,
       floors: [{ id: "plan", name: "Floor plan", plan: built.image ? project.planImage : null, planSize: { w: built.tr.w, h: built.tr.h } }],
       rooms: outRooms, model,
-      furnishing: rooms.flatMap((r) => U.starter(r, r.type, built.mpp)),
+      furnishing: rooms.flatMap((r) => starterThatFits(U, r, built.tr, built.mpp)),
     };
     try { autoViews(property); } catch (e) { console.warn("Viewpoints couldn’t be worked out", e); }
     return property;

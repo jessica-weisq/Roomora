@@ -491,3 +491,36 @@ def test_panoramas_run_alongside_reconstruction(tmp_path):
     assert seen_during_reconstruction == [True]
     status = store.get_status("j1")
     assert status["state"] == "done" and status["panoramas"] == {room: "https://example.com/pano.jpg"}
+
+
+def test_reimagine_endpoint(tmp_path):
+    import base64
+    from fastapi.testclient import TestClient
+    from core.api import create_app
+    from core.reimagine import prompt_for
+    from core.storage import Store
+
+    store = Store(tmp_path, {})
+    seen = {}
+
+    def fake_fal(render, photo, room, notes):
+        seen.update(render=render[:3], photo=photo[:3] if photo else None, room=room, notes=notes)
+        return _jpeg((10, 200, 30))
+
+    url = lambda b: "data:image/jpeg;base64," + base64.b64encode(b).decode()  # noqa: E731
+    client = TestClient(create_app(store, lambda j, p: None, demo_match, None, None, fake_fal))
+    r = client.post("/reimagine", json={"render": url(_jpeg((200, 200, 200))), "photo": url(_jpeg((90, 80, 70))), "roomName": "Bedroom 2"})
+    assert r.status_code == 200, r.text
+    assert seen["render"] == b"\xff\xd8\xff" and seen["photo"] == b"\xff\xd8\xff" and seen["room"] == "Bedroom 2"
+    img = r.json()["imageUrl"]
+    got = client.get(img[img.index("/reimagined/"):])
+    assert got.status_code == 200 and got.headers["content-type"] == "image/jpeg" and got.content[:3] == b"\xff\xd8\xff"
+    # without a photo it still works; bad input and no fal are refused clearly
+    assert client.post("/reimagine", json={"render": url(_jpeg((1, 2, 3)))}).status_code == 200 and seen["photo"] is None
+    assert client.post("/reimagine", json={"render": "https://example.com/x.jpg"}).status_code == 400
+    assert client.post("/reimagine", json={"render": "data:image/png;base64,bm90IGFuIGltYWdl"}).status_code == 400
+    assert client.get("/reimagined/../../etc.jpg").status_code == 404
+    assert TestClient(create_app(store, lambda j, p: None, demo_match)).post("/reimagine", json={"render": url(_jpeg((1, 2, 3)))}).status_code == 501
+    # the prompt keeps the real room from the photo and the design from the mock-up
+    p = prompt_for("Bedroom 2", True)
+    assert "first image is a real photograph" in p and "mock-up" in p and "bedroom 2" in p

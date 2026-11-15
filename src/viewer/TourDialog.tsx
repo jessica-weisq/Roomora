@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { Icon } from '../components/Icon'
-import { depthUrlBase, furnishRoom } from '../api/client'
+import { depthUrlBase, furnishRoom, reimagineRoom } from '../api/client'
 import { resolvedAssignments, useProject } from '../state/ProjectContext'
 
 interface Props {
@@ -55,7 +55,7 @@ export function TourDialog({ title, startRoom, onClose }: Props) {
 
     async function onMessage(e: MessageEvent) {
       if (e.origin !== origin || e.source !== frame.current?.contentWindow || !e.data || typeof e.data !== 'object') return
-      const msg = e.data as { type: string; id?: number; roomId?: string }
+      const msg = e.data as { type: string; id?: number; roomId?: string; render?: string; photo?: string | null; roomName?: string; notes?: string }
       if (msg.type === 'veduta:hello') {
         frame.current?.contentWindow?.postMessage(
           {
@@ -77,6 +77,13 @@ export function TourDialog({ title, startRoom, onClose }: Props) {
           },
           origin,
         )
+      }
+      if (msg.type === 'veduta:reimagine' && msg.id != null && typeof msg.render === 'string') {
+        try {
+          reply(msg.id, await reimagineRoom({ render: msg.render, photo: msg.photo ?? null, roomName: msg.roomName ?? 'room', notes: msg.notes }))
+        } catch (err) {
+          reply(msg.id, null, { message: err instanceof Error ? err.message : 'Fal couldn’t reimagine the room just now. Try again.' })
+        }
       }
       if (msg.type === 'veduta:furnish' && msg.id != null && msg.roomId && projectId) {
         const ids = (photosByRoom[msg.roomId] ?? []).map((p) => p.id)

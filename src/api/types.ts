@@ -108,6 +108,21 @@ export interface FurnishResponse {
   art?: FurnishArt[]
 }
 
+/** For the walk-through's interior designer: a render of the redesign and the room's real photo, as data: URLs. */
+export interface ReimagineRequest {
+  render: string
+  photo: string | null
+  roomName: string
+  notes?: string
+}
+
+export interface ReimagineResponse {
+  /** The AI's photographic version of the redesign */
+  imageUrl: string
+  /** true from the mock backend, which can't make one and sends the render back */
+  mock?: boolean
+}
+
 export const BUILD_STEPS: { label: string; detail: string }[] = [
   { label: 'Reading the floor plan', detail: 'Finding walls, doors and windows' },
   { label: 'Finding rooms', detail: 'Naming each room and measuring it' },

@@ -289,13 +289,64 @@
             const p = point(ix, iy);
             pa.setXYZ(iy * SW + ix, p.x, p.y, p.z);
           }
+        // Cut the surface where the depth jumps (the edge of a chair against a far wall). Left joined, those
+        // triangles stretch into long smears the moment you move; cut, the gap shows the soft backdrop below.
+        {
+          const src = geo.index.array, keep = [], dist = (v) => Math.hypot(pa.getX(v), pa.getY(v), pa.getZ(v));
+          for (let t = 0; t < src.length; t += 3) {
+            const a = dist(src[t]), b = dist(src[t + 1]), c = dist(src[t + 2]);
+            if (Math.max(a, b, c) / Math.min(a, b, c) < 1.2) keep.push(src[t], src[t + 1], src[t + 2]);
+          }
+          geo.setIndex(keep);
+        }
         geo.computeBoundingSphere();
+        // backdrop: the photo, heavily blurred, on a sheet just beyond the farthest point, wider than the view,
+        // so gaps and the edges of the picture fall away into soft colour, not black
+        {
+          const bc = document.createElement("canvas"); bc.width = 40; bc.height = Math.max(8, Math.round((40 * IH) / IW));
+          const bg = bc.getContext("2d"); bg.filter = "blur(1.5px)"; bg.drawImage(image, 0, 0, bc.width, bc.height);
+          const bt = new THREE.CanvasTexture(bc); bt.minFilter = bt.magFilter = THREE.LinearFilter;
+          const Z = far * 1.05, grow = 1.6, hw = ((SW - 1) / 2 / f) * Z * grow, hh = ((SH - 1) / 2 / f) * Z * grow;
+          const back = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2, hh * 2), new THREE.MeshBasicMaterial({ map: bt, color: 0xd8d8d8 }));
+          const uv = back.geometry.attributes.uv;   // the photo fills the middle; its edge colours run on outwards
+          for (let k = 0; k < uv.count; k++) uv.setXY(k, (uv.getX(k) - 0.5) * grow + 0.5, (uv.getY(k) - 0.5) * grow + 0.5);
+          back.position.z = -Z; back.renderOrder = -1;
+          scene.add(back);
+        }
         const tex = image instanceof HTMLCanvasElement ? new THREE.CanvasTexture(image) : new THREE.Texture(image);
         tex.needsUpdate = true;
         tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
         tex.minFilter = THREE.LinearFilter;
         const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex }));
         scene.add(mesh);
+        // Behind it, the same photo on the background's depth: at each point, the farthest depth nearby, smoothed.
+        // Where the front surface was cut (behind a chair, a bed, a curtain's edge), you see the wall or floor
+        // carrying on at about the right distance, with no hole and no smear.
+        {
+          const R = 7, zs = new Float32Array(SW * SH), tmp = new Float32Array(SW * SH);
+          for (let iy = 0; iy < SH; iy++) for (let ix = 0; ix < SW; ix++) zs[iy * SW + ix] = zAt(ix, iy);
+          const pass = (srcA, dstA, horizontal, far) => {
+            for (let iy = 0; iy < SH; iy++) for (let ix = 0; ix < SW; ix++) {
+              let acc = far ? 0 : 0, n = 0;
+              for (let k = -R; k <= R; k++) {
+                const x = horizontal ? ix + k : ix, y = horizontal ? iy : iy + k;
+                if (x < 0 || y < 0 || x >= SW || y >= SH) continue;
+                const v = srcA[y * SW + x];
+                if (far) { if (v > acc) acc = v; } else { acc += v; n++; }
+              }
+              dstA[iy * SW + ix] = far ? acc : acc / n;
+            }
+          };
+          pass(zs, tmp, true, true); pass(tmp, zs, false, true);     // farthest nearby
+          pass(zs, tmp, true, false); pass(tmp, zs, false, false);   // smoothed
+          const bgeo = new THREE.PlaneGeometry(1, 1, SW - 1, SH - 1), bp = bgeo.attributes.position;
+          for (let iy = 0; iy < SH; iy++) for (let ix = 0; ix < SW; ix++) {
+            const z = zs[iy * SW + ix] * 1.04;   // a touch behind, so it never fights the front surface
+            bp.setXYZ(iy * SW + ix, ((ix - (SW - 1) / 2) / f) * z, (-(iy - (SH - 1) / 2) / f) * z, -z);
+          }
+          bgeo.computeBoundingSphere();
+          scene.add(new THREE.Mesh(bgeo, new THREE.MeshBasicMaterial({ map: tex })));
+        }
 
         const hots = linksHere(r, i).map((l) => {
           const b = hotspotButton(l);
@@ -307,7 +358,8 @@
         const pos = { x: 0, z: 0 };
         let yaw = 0, pitch = 0, target = null, w = 1, h = 1, raf = 0;
         // how far you can move scales with how close the nearest things are, to keep stretching down
-        const reach = Math.min(1, near / 1.5);
+        // (less still for automatic depth maps, whose scale is a guess: media.depthAuto)
+        const reach = Math.min(1, near / 1.5) * (m.depthAuto ? 0.55 : 1);
         const LIM = { x: 0.75 * reach, zf: -1.5 * reach, zb: 0.3 * reach, yaw: 0.8, pitch: 0.38 };
         const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
         const keys = new Set();

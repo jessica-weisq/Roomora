@@ -23,6 +23,16 @@ MatchFn = Callable[[bytes, str, list[tuple[str, bytes]]], dict[str, Any]]
 FurnishFn = Callable[[list[bytes], str, float, float], dict[str, Any]]
 # photo jpeg -> depth map PNG for the walk-through's 3D photos; see core/depth.py
 DepthFn = Callable[[bytes], bytes]
+# (design render jpeg, room photo jpeg or None, room name, notes) -> reimagined image; see core/reimagine.py
+ReimagineFn = Callable[[bytes, "bytes | None", str, str], bytes]
+MAX_REIMAGINE_BYTES = 12 * 1024 * 1024
+
+
+class ReimagineRequest(BaseModel):
+    render: str                 # data: URL of the walk-through's render of the design
+    photo: str | None = None    # data: URL of the room's original photo
+    roomName: str = "room"
+    notes: str = ""
 MAX_PHOTOS = 60
 MAX_FURNISH_PHOTOS = 8
 
@@ -49,6 +59,7 @@ def create_app(
     match_fn: MatchFn,
     furnish_fn: FurnishFn | None = None,
     depth_fn: DepthFn | None = None,
+    reimagine_fn: ReimagineFn | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Photos + floor plan → 3D")
     # The frontend is served from another origin (localhost, Netlify), so allow cross-origin calls.
@@ -192,6 +203,60 @@ def create_app(
         cached.write_bytes(png)
         store.commit()
         return Response(png, media_type="image/png", headers=headers)
+
+    @app.post("/reimagine")
+    def reimagine(req: ReimagineRequest, request: Request) -> dict:
+        """For the walk-through's interior designer: the redesigned room, made photographic in its real setting."""
+        if reimagine_fn is None:
+            raise HTTPException(501, "Reimagining isn't set up on this server (it needs FAL_KEY).")
+        import base64
+        import binascii
+
+        from .reimagine import to_jpeg
+
+        def decode(data_url: str | None) -> bytes | None:
+            if not data_url:
+                return None
+            if not data_url.startswith("data:image/") or "," not in data_url:
+                raise HTTPException(400, "Images must be sent as data: URLs.")
+            try:
+                raw = base64.b64decode(data_url.split(",", 1)[1], validate=True)
+            except (binascii.Error, ValueError):
+                raise HTTPException(400, "That image couldn't be read.")
+            if len(raw) > MAX_REIMAGINE_BYTES:
+                raise HTTPException(413, "That image is too big.")
+            try:
+                return to_jpeg(raw)
+            except Exception:
+                raise HTTPException(400, "That isn't an image.")
+
+        render, photo = decode(req.render), decode(req.photo)
+        if not render:
+            raise HTTPException(400, "There's no design to reimagine.")
+        try:
+            result = reimagine_fn(render, photo, req.roomName[:80], req.notes[:300])
+        except Exception:
+            log.exception("Reimagine failed")
+            raise HTTPException(502, "Fal couldn't reimagine the room just now. Please try again.")
+        rid = uuid.uuid4().hex[:16]
+        path = store.root / "reimagined" / f"{rid}.jpg"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(result)
+        store.commit()
+        host = request.headers.get("host") or request.url.netloc
+        local = host.startswith(("localhost", "127.0.0.1", "0.0.0.0"))
+        scheme = request.headers.get("x-forwarded-proto") or ("http" if local else "https")
+        return {"imageUrl": f"{scheme}://{host}/reimagined/{rid}.jpg"}
+
+    @app.get("/reimagined/{name}")
+    def reimagined(name: str) -> FileResponse:
+        m = re.fullmatch(r"([0-9a-f]{16})\.jpg", name)
+        path = store.root / "reimagined" / name if m else None
+        if path and not path.exists():
+            store.reload()
+        if not path or not path.exists():
+            raise HTTPException(404, "That image wasn't found.")
+        return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
     @app.get("/panorama/{job_id}/{name}")
     def panorama(job_id: str, name: str) -> FileResponse:

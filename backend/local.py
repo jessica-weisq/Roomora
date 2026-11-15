@@ -55,15 +55,16 @@ def make_app():
     else:
         reconstruct = _reconstructor()
 
-    panorama = None
+    panorama = reimagine = None
     if os.environ.get("FAL_KEY"):
         try:
             from core.panorama import make_fal_panorama
+            from core.reimagine import make_fal_reimagine
 
-            panorama = make_fal_panorama()
-            logging.info("FAL_KEY is set: builds make a 360° view per room with fal.")
+            panorama, reimagine = make_fal_panorama(), make_fal_reimagine()
+            logging.info("FAL_KEY is set: builds make a 360° view per room, and Reimagine with Fal works.")
         except ImportError:
-            logging.warning("FAL_KEY is set but fal-client isn't installed (pip install fal-client): no 360° views.")
+            logging.warning("FAL_KEY is set but fal-client isn't installed (pip install fal-client): no 360° views or reimagining.")
 
     def start_build(job_id: str, project_id: str) -> None:
         threading.Thread(target=run_build, args=(store, job_id, project_id, reconstruct, panorama), daemon=True).start()
@@ -79,7 +80,7 @@ def make_app():
     depth_fn = depth.depth_png if depth.available() else None
     if not depth_fn:
         logging.warning("onnxruntime isn't installed: photos in the walk-through stay flat (pip install onnxruntime).")
-    return create_app(store, start_build, match, furnish_room if which else demo_furnish, depth_fn)
+    return create_app(store, start_build, match, furnish_room if which else demo_furnish, depth_fn, reimagine)
 
 
 if __name__ == "__main__":

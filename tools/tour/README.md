@@ -23,6 +23,11 @@ http://localhost:5173/tour/index.html), not by double-clicking the file.
 - **3D photos**: each room's photos. Photos are 3D (depth maps): the sample's were made with `build_depth.py`, a project's come from the backend's `/depth` endpoint. With the mock backend, project photos are flat.
 - **Street**: Street View facing the building, falling back to a static map and then the front photo
   (Track C, `public/tour/exterior/`). **Go inside** enters the hall.
+- **Redesign** (the interior designer): shows the design tools below. **Reimagine with Fal** sits under
+  it (it glows once you've changed something): it renders the room as it now looks, from where you're standing, and sends
+  that with the room's original photo to the backend (`POST /api/reimagine`), which asks fal for a photographic
+  version of the redesign in the real room. The result is labelled as an AI impression. Inside Veduta the
+  website passes the request on; opened on its own, set `API_URL` in `public/tour/config.js` to the backend.
 - **Paint and wallpaper**: click a wall, then pick a colour on the wheel and a finish (plain, stripe,
   pinstripe, trellis, polka dot, damask, grasscloth) for that wall or the whole room. Saved on this device.
 - **Furnish from photos** (inside Veduta): asks the backend what furniture the room's photos show and
@@ -87,3 +92,9 @@ Run from `public/tour/` (Python 3 with Pillow, NumPy, SciPy):
 
 The sample's photos and floor plan belong to the estate agent who listed the flat; replace them before any
 public or commercial use.
+
+## Which build is live
+
+`public/tour/index.html` carries a build stamp (bottom-left corner of the tour, and `?v=` on every script and
+stylesheet so browsers fetch new files). After deploying, check the stamp matches. Bump it in index.html when
+you change the tour.

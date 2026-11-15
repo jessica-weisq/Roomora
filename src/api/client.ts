@@ -2,7 +2,7 @@
 // With VITE_USE_MOCK unset or "true", it uses ./mock.ts. Set VITE_USE_MOCK=false
 // and VITE_API_URL to the real server to switch over. Endpoints are in README.md.
 
-import type { BuildRequest, BuildStatus, FurnishResponse, MatchResponse } from './types'
+import type { BuildRequest, BuildStatus, FurnishResponse, MatchResponse, ReimagineRequest, ReimagineResponse } from './types'
 import { mockFurnishRoom, mockGetBuildStatus, mockMatchPhotos, mockStartBuild } from './mock'
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
@@ -72,4 +72,16 @@ export async function furnishRoom(projectId: string, roomId: string, photoIds: s
 export function depthUrlBase(projectId: string): string | null {
   if (USE_MOCK) return null
   return new URL(`${API_URL}/depth/${encodeURIComponent(projectId)}`, window.location.href).toString()
+}
+
+/** For the walk-through's interior designer: fal's photographic version of a redesigned room (POST /reimagine). */
+export async function reimagineRoom(req: ReimagineRequest): Promise<ReimagineResponse> {
+  if (USE_MOCK) return { imageUrl: req.render, mock: true }
+  return json(
+    await fetch(`${API_URL}/reimagine`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    }),
+  )
 }

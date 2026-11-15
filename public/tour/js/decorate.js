@@ -281,6 +281,7 @@
       // apply the current finish to the selected wall(s) and save after a pause
       let saveTimer = null;
       function apply() {
+        if (selected.length) T.emit("tour:design-changed", { kind: "walls" });
         if (!selected.length) return;
         const d = { pattern: current.pattern, color: current.color };
         if (current.pattern !== "plain" && current.ink) d.ink = current.ink;
@@ -339,6 +340,7 @@
       }));
       panel.querySelectorAll(".dc-which button").forEach((b) => b.addEventListener("click", () => setWhich(b.dataset.which)));
       $(".dc-reset").addEventListener("click", () => {
+        if (selected.length) T.emit("tour:design-changed", { kind: "walls" });
         if (!selected.length) return;
         const target = scope === "room" ? roomWalls(selected[0].room) : selected;
         target.forEach((sg) => { delete walls[sg.key]; paint(sg, roomDefault(sg.room)); });

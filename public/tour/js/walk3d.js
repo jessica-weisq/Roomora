@@ -352,14 +352,15 @@
         if (G[z * GW + x] !== 4) continue;
         if (G[z * GW + x - 1] === 1 || G[z * GW + x + 1] === 1 || G[(z - 1) * GW + x] === 1 || G[(z + 1) * GW + x] === 1) lining.push([x, z]);
       }
-      if (lining.length) {
+      // (the sample flat only: an uploaded flat's bathroom keeps the wall colour seen in its photos)
+      if (lining.length && !punched) {
         const lm = new THREE.InstancedMesh(box, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3, envMapIntensity: 0.6 }), lining.length);
         lm.receiveShadow = true;
         const col = new THREE.Color();
         lining.forEach(([x, z], i) => {
           m4.makeScale(cs * 1.02, H, cs * 1.02); m4.setPosition((x + 0.5) * cs, H / 2, (z + 0.5) * cs); lm.setMatrixAt(i, m4);
-          const band = 0.94 + 0.06 * Math.sin(z * 0.9 + x * 0.3);
-          col.setRGB((226 / 255) * band, (206 / 255) * band, (172 / 255) * band).convertSRGBToLinear(); lm.setColorAt(i, col);
+          // one even tone: shading each column differently reads as vertical stripes, not stone
+          col.setRGB(226 / 255, 206 / 255, 172 / 255).convertSRGBToLinear(); lm.setColorAt(i, col);
         });
         finishes.add(lm);
       }
@@ -752,6 +753,7 @@
         root, THREE, scene, camera, renderer, canvas, wallMesh, F, P, s, cs, GW, GH, aniso: anis, alive, visible: () => visible(),
         cellAt, inPoly, unstick, roomAt: () => roomAt(), view: () => ({ x: pos.x, z: pos.z, yaw }),
       }) || gate;
+      if (T.Designer && F.group) T.Designer.attach({ root, renderer, scene, camera, canvas, P, alive, roomAt: () => roomAt() });
       T.walkTo = (x, y, deg = 0, pitchDeg = -4, smooth = false) => {
         const to = { x: x * s, z: y * s, yaw: (deg * Math.PI) / 180, pitch: (pitchDeg * Math.PI) / 180 };
         // Viewpoints are worked out before the room is furnished, so one can land in furniture or right behind

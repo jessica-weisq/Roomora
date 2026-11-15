@@ -28,7 +28,7 @@ web_image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
         "fastapi[standard]>=0.115", "python-multipart", "anthropic>=0.40", "google-genai>=1.30",
-        "pillow", "pillow-heif", "numpy<2", "trimesh", "onnxruntime",
+        "pillow", "pillow-heif", "numpy<2", "trimesh", "onnxruntime", "fal-client>=1.0", "httpx",
     )
     # The depth model for 3D photos (about 100 MB), baked in so it isn't downloaded on every cold start.
     # Downloaded directly (same URL and file name as core/depth.py) because our code isn't in the image yet here.
@@ -100,4 +100,11 @@ def api():
     def start_build(job_id: str, project_id: str) -> None:
         Builder().build.spawn(job_id, project_id)
 
-    return create_app(store, start_build, match_photos, furnish_room, depth_png)
+    import os
+
+    reimagine = None
+    if os.environ.get("FAL_KEY"):
+        from core.reimagine import make_fal_reimagine
+
+        reimagine = make_fal_reimagine()
+    return create_app(store, start_build, match_photos, furnish_room, depth_png, reimagine)

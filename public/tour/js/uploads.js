@@ -97,6 +97,53 @@
       let on = 0; for (let dy = -1; dy <= 1 && !on; dy++) for (let dx = -1; dx <= 1; dx++) if (er[(y + dy) * w + x + dx]) { on = 1; break; }
       wall[y * w + x] = on;
     }
+    // Walls are the thickest strokes on a plan and all about the same thickness; room labels, dimension lines,
+    // door leaves, baths, beds, kitchen units and compasses are drawn thinner. So: measure how thick the ink is
+    // at every dark pixel (the shorter of its horizontal and vertical runs), take the thickness most of the ink
+    // has as the wall thickness, and keep only strokes at least 40% of that. Without this, every bold label
+    // and fixture is extruded into a floor-to-ceiling wall.
+    // First, big filled blocks out of the way (a title bar, a filled key or logo): anything mostly solid and
+    // fatter than 3.5% of the drawing. Lettering on a title bar slices it into bands that pass for long, thick
+    // strokes, so they must go before the wall thickness is worked out.
+    const tooThick = Math.max(24, Math.min(w, h) * 0.035);
+    {
+      const pc = components(wall, w, h, true), n = pc.sizes.length;
+      const ax0 = new Int32Array(n).fill(w), ay0 = new Int32Array(n).fill(h), ax1 = new Int32Array(n).fill(-1), ay1 = new Int32Array(n).fill(-1);
+      for (let i = 0; i < N; i++) { if (!wall[i]) continue; const k = pc.lab[i], x = i % w, y = (i / w) | 0; if (x < ax0[k]) ax0[k] = x; if (x > ax1[k]) ax1[k] = x; if (y < ay0[k]) ay0[k] = y; if (y > ay1[k]) ay1[k] = y; }
+      const block = (k) => { const bw = ax1[k] - ax0[k] + 1, bh = ay1[k] - ay0[k] + 1; return Math.min(bw, bh) > tooThick && pc.sizes[k] / (bw * bh) > 0.5; };
+      for (let i = 0; i < N; i++) if (wall[i] && block(pc.lab[i])) wall[i] = 0;
+    }
+    const thick = new Uint16Array(N), long = new Uint16Array(N);
+    const measure = () => {
+      thick.fill(0); long.fill(0);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; ) {
+        if (!wall[y * w + x]) { x++; continue; }
+        let e = x; while (e < w && wall[y * w + e]) e++;
+        const len = Math.min(65535, e - x);
+        for (let k = x; k < e; k++) { thick[y * w + k] = len; long[y * w + k] = len; }
+        x = e;
+      }
+      for (let x = 0; x < w; x++) for (let y = 0; y < h; ) {
+        if (!wall[y * w + x]) { y++; continue; }
+        let e = y; while (e < h && wall[e * w + x]) e++;
+        const len = Math.min(65535, e - y);
+        for (let k = y; k < e; k++) { const i = k * w + x; if (len < thick[i]) thick[i] = len; if (len > long[i]) long[i] = len; }
+        y = e;
+      }
+    };
+    measure();
+    // Which thickness is "wall": the one the long straight strokes have. Each pixel votes with the length of
+    // the stroke it's on, so walls (metres long) outvote labels (short strokes), fixtures and solid columns.
+    // (Bands thicker than 3.5% of the drawing aren't walls at any sensible scale: a title bar, a filled key.
+    // And one stroke's vote is capped, so a single very long line can't decide it alone.)
+    const hist = new Float64Array(128);
+    for (let i = 0; i < N; i++) if (wall[i] && thick[i] <= tooThick && long[i] >= thick[i] * 3) hist[Math.min(127, thick[i])] += Math.min(long[i], thick[i] * 30);
+    if (!hist.some((v) => v > 0)) for (let i = 0; i < N; i++) if (wall[i]) hist[Math.min(127, thick[i])]++;   // nothing stroke-like: go by ink
+    let wallPx = 3, bestInk = -1;
+    for (let t = 3; t < 127; t++) { const ink = hist[t - 1] + hist[t] + hist[t + 1]; if (ink > bestInk) { bestInk = ink; wallPx = t; } }
+    const minThick = Math.max(3, Math.round(wallPx * 0.4));
+    for (let i = 0; i < N; i++) if (wall[i] && thick[i] < minThick) wall[i] = 0;
+
     const wc = components(wall, w, h, true);
     // drop specks, and solid blocks that aren't walls: a screenshot's toolbar, logos, filled arrows and keys.
     // Walls are lines, so a wall network fills only a small part of its bounding box.
@@ -107,8 +154,21 @@
       if (x < bx0[k]) bx0[k] = x; if (x > bx1[k]) bx1[k] = x; if (y < by0[k]) by0[k] = y; if (y > by1[k]) by1[k] = y;
     }
     // (big ones only: pillars and thick wall blocks are solid too, but small)
-    const solid = (k) => { const bw = bx1[k] - bx0[k] + 1, bh = by1[k] - by0[k] + 1; return wc.sizes[k] > 1500 && Math.min(bw, bh) > 12 && wc.sizes[k] / (bw * bh) > 0.55; };
-    for (let i = 0; i < N; i++) if (wall[i] && (wc.sizes[wc.lab[i]] < 60 || solid(wc.lab[i]))) wall[i] = 0;
+    // A piece is a solid block, not wall, if it's filled in and much fatter than a wall: a toolbar, a logo, a
+    // headboard, a table. A straight run of wall is filled in too but only one wall thick; a column built into
+    // a wall is part of the wall's piece, so it stays.
+    const solid = (k) => {
+      const bw = bx1[k] - bx0[k] + 1, bh = by1[k] - by0[k] + 1, lo = Math.min(bw, bh), hi = Math.max(bw, bh);
+      return wc.sizes[k] / (bw * bh) > 0.5 && lo > wallPx * 1.7 && (hi / lo < 6 || lo > wallPx * 4);
+    };
+    // windows and doors cut the walls into separate pieces, so every decent length of wall (about a metre) is
+    // kept; anything shorter standing on its own is a letter, a symbol or a blob, not a wall
+    // ...and so is a piece standing on its own that's thinner than the walls (two fixture lines side by side)
+    measure();   // again, now the thin strokes are gone (where they met a piece, its runs looked long)
+    const thickSum = new Float64Array(nComp);
+    for (let i = 0; i < N; i++) if (wall[i]) thickSum[wc.lab[i]] += thick[i];
+    const stray = (k) => Math.max(bx1[k] - bx0[k], by1[k] - by0[k]) + 1 < wallPx * 4 || thickSum[k] / wc.sizes[k] < wallPx * 0.7;
+    for (let i = 0; i < N; i++) if (wall[i] && (wc.sizes[wc.lab[i]] < 60 || solid(wc.lab[i]) || stray(wc.lab[i]))) wall[i] = 0;
     // the drawing itself: the box round the walls that are left (anything beyond it, such as a screenshot's
     // border, captions or page furniture, is outside)
     let cx0 = w, cy0 = h, cx1 = -1, cy1 = -1;
@@ -140,7 +200,7 @@
     const bc = components(g.map((v) => (v >= 1 ? 1 : 0)), GW, GH, true);
     let big = 0; bc.sizes.forEach((s, k) => { if (s > bc.sizes[big]) big = k; });
     for (let i = 0; i < g.length; i++) if (g[i] && bc.lab[i] !== big) g[i] = 0;
-    return { w, h, scale, GW, GH, CELL, g, canvas: c };
+    return { w, h, scale, GW, GH, CELL, g, canvas: c, wallPx };
   }
 
   const FLOOR_FOR = { bedroom: 3, bathroom: 4, kitchen: 6, utility: 6, wardrobe: 7, terrace: 5 };

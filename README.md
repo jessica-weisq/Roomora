@@ -11,7 +11,9 @@ Photos + floor plan → 3D. The user uploads a floor plan and room photos (and o
 Upload any floor plan and room photos (and the address) and the walk-through is built the same way as the sample flat:
 
 - **Rooms** are found by the vision model as boxes on the plan image (the way vision models point at things best), with the scale taken from the dimensions written on the plan. In the walk-through each room then snaps to the space its walls enclose in the traced drawing (doorways closed off), which is what gets bathrooms, en suites and WCs right: they're small, fully walled spaces. A bedroom box that took in its en suite shrinks back to the bedroom.
-- **Walls, doors and windows** are traced from the plan image, or drawn from the measured rooms when the rooms don't sit on the traced walls (screenshots, odd drawings).
+- **Walls, doors and windows** are traced from the plan image, or drawn from the measured rooms when the rooms don't sit on the traced walls (screenshots, odd drawings). Only wall-thickness strokes count as walls: the tracer measures how thick the plan's long straight strokes are and drops anything much thinner (labels, dimension lines, door leaves, baths, beds, kitchen units) or fatter (title bars, filled headboards), so fixtures and lettering aren't extruded into walls. Walls away from every room (scale bars, keys) are dropped too.
+- **Every room is reachable.** Starting from the hall, any room that can't be walked to gets a doorway cut through the wall it shares with one that can, so a door drawn shut on the plan doesn't seal a room.
+- **Starter furniture is turned to suit each room**, so baths don't sit across doorways and mirrors and wardrobes don't cover windows.
 - **Furniture, floors and wall colours** come from each room's photos: when the walk-through opens, every photographed room is furnished automatically (two rooms at a time; the backend keeps each answer, so reopening is quick). Rooms with a 3D scan keep the scan, and a layout arranged by hand with **Arrange furniture** is never replaced.
 - **The view out of the windows** is the nearest Google Street View panorama to the address, and **the sunlight** comes from the south-west. Both are turned to the compass using the plan's north arrow when it has one (`plan.north`).
 
@@ -161,6 +163,16 @@ Response (types are the ones the walk-through can draw, listed in `backend/core/
 `art.photo` is 1-based in the order of `photoIds`; `box` is `[x0, y0, x1, y1]` as fractions of that photo; `wall` and `at` (0–1 along it) place it in the room.
 
 The answer is saved per room, so asking again with the same photos doesn't call the AI again. A server without it answers 501 and the walk-through keeps its starter furniture.
+
+### `POST /api/reimagine` (optional, needs `FAL_KEY`)
+
+Used by the walk-through's **Reimagine with Fal**, after someone redesigns a room with the interior designer.
+
+```json
+{ "render": "data:image/jpeg;base64,…", "photo": "data:image/jpeg;base64,…", "roomName": "Bedroom 2", "notes": "evening light" }
+```
+
+`render` is the walk-through's view of the redesign; `photo` is the room's original photo (or null). Both go to `fal-ai/nano-banana/edit` (about $0.04 an image; change it with `FAL_REIMAGINE_MODEL`), asked to keep the real room from the photo (walls, windows, view, light) and take the furniture, layout and colours from the render. Response: `{ "imageUrl": "https://…/reimagined/<id>.jpg" }`, kept on the backend. Without `FAL_KEY` it answers 501; the mock backend sends the render back so the flow can be tried. Check your key with `FAL_KEY=... python -m core.reimagine design.jpg photo.jpg "Bedroom"` from `backend/`.
 
 ### 5. `GET /api/depth/{projectId}/{photoId}.png` (optional)
 

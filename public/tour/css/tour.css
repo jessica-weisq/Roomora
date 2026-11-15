@@ -397,3 +397,41 @@ body.plan-large .rv-bar { max-width: calc(100% - 2 * var(--gap) - min(62vw, 760p
 .w3-outlook button:hover { background: var(--glass-strong); }
 .is-arranging .w3-outlook, .is-decorating .w3-outlook { display: none; }
 @media (max-width: 760px) { .w3-outlook span { display: none; } }
+
+/* interior designer and Reimagine with Fal */
+.w3-redesign[aria-pressed="true"] { background: var(--brass); color: var(--brass-ink); border-color: var(--brass); }
+.w3-reimagine { background: linear-gradient(135deg, #c9a46a, #e3c48f); color: var(--brass-ink); border-color: #c9a46a; font-weight: 600; }
+.w3-reimagine:hover { filter: brightness(1.06); }
+.rm-sheet { position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(12, 10, 8, 0.72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.rm-box { width: min(1180px, 100%); max-height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: var(--radius-panel); background: var(--stone); color: var(--stone-ink); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5); }
+.rm-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.rm-title { margin: 0; font: 400 26px/1.1 var(--serif); }
+.rm-close, .rm-again { border: 0; border-radius: var(--radius-pill); padding: 7px 16px; background: #a8834a; color: #fff; font-weight: 600; cursor: pointer; }
+.rm-close { background: var(--stone-line); color: var(--stone-ink); }
+.rm-again:disabled { opacity: 0.55; cursor: progress; }
+.rm-grid { display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 12px; align-items: start; }
+.rm-fig { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.rm-fig[hidden] { display: none; }
+.rm-fig img { width: 100%; border-radius: 10px; display: block; background: #0002; }
+.rm-fig figcaption { font-size: 12.5px; color: var(--stone-soft); }
+.rm-result { grid-row: span 1; }
+.rm-wait { aspect-ratio: 4 / 3; border-radius: 10px; background: #0001; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 18px; text-align: center; }
+.rm-wait[hidden] { display: none; }
+.rm-result img:not([hidden]) + figcaption { margin-top: 0; }
+.rm-status { margin: 0; font-size: 14px; color: var(--stone-ink); max-width: 420px; }
+.rm-spin { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--stone-line); border-top-color: #a8834a; animation: rm-spin 0.9s linear infinite; }
+.rm-spin[hidden] { display: none; }
+@keyframes rm-spin { to { transform: rotate(360deg); } }
+.rm-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rm-notes-l { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--stone-soft); }
+.rm-notes { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--stone-line); background: var(--drawing); color: #2b231c; font: 14px var(--sans); }
+.rm-save { font-size: 14px; color: var(--stone-ink); }
+@media (max-width: 760px) { .rm-grid { grid-template-columns: 1fr 1fr; } .rm-result { grid-column: 1 / -1; grid-row: 1; } }
+@media (prefers-reduced-motion: reduce) { .rm-spin { animation: none; } }
+
+/* build stamp: tells you at a glance which version is live */
+.app-build { position: fixed; left: 8px; bottom: 4px; z-index: 50; font: 10px/1 var(--sans); letter-spacing: 0.04em; color: rgba(255, 255, 255, 0.38); pointer-events: none; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+/* Reimagine with Fal draws the eye once something has been redesigned */
+.w3-reimagine.is-ready { box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55), 0 6px 22px rgba(201, 164, 106, 0.55); }
+@media (prefers-reduced-motion: no-preference) { .w3-reimagine.is-ready { animation: rm-ready 2.4s ease-in-out 2; } }
+@keyframes rm-ready { 50% { transform: scale(1.04); } }
