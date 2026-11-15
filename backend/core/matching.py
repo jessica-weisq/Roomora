@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 # Override with ANTHROPIC_MODEL / GEMINI_MODEL if you want a different model.
 DEFAULT_MODEL = "claude-sonnet-5-5"
-DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"  # gemini-2.5-flash is closed to new API keys
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"  # fast; gemini-3.8-flash timed out even on "hi" for free keys
 
 TOOL = {
     "name": "report_layout",

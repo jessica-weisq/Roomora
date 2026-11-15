@@ -28,7 +28,7 @@ modal secret create photos-to-3d GEMINI_API_KEY=...   # or ANTHROPIC_API_KEY=sk-
 #   add FAL_KEY=... to that command for 360° views
 ```
 
-The AI key is for reading the floor plan and matching photos (`core/matching.py`). With `GEMINI_API_KEY` it uses Gemini (`GEMINI_MODEL`, default `gemini-3.8-flash`); with `ANTHROPIC_API_KEY` it uses Claude (`ANTHROPIC_MODEL`, default `claude-sonnet-5-5`). If both are set, Gemini wins unless `MATCH_PROVIDER=claude`. Get a Gemini key at aistudio.google.com/apikey.
+The AI key is for reading the floor plan and matching photos (`core/matching.py`). With `GEMINI_API_KEY` it uses Gemini (`GEMINI_MODEL`, default `gemini-3.5-flash-lite`); with `ANTHROPIC_API_KEY` it uses Claude (`ANTHROPIC_MODEL`, default `claude-sonnet-5-5`). If both are set, Gemini wins unless `MATCH_PROVIDER=claude`. Get a Gemini key at aistudio.google.com/apikey.
 
 To change the key later: `modal secret create photos-to-3d GEMINI_API_KEY=... --force` (include every key you want to keep, e.g. `FAL_KEY`).
 

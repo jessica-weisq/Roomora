@@ -14,7 +14,7 @@ from google import genai
 from google.genai import types
 
 client = genai.Client(http_options=types.HttpOptions(timeout=180_000, retry_options=types.HttpRetryOptions(attempts=1)))
-model = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+model = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 print("Flash models this key can use:")
 for m in client.models.list():
