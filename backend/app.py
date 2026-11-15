@@ -60,9 +60,14 @@ gpu_image = (
 class Builder:
     @modal.enter()
     def load_model(self):
+        import time
+
         from core.reconstruct import Mast3rReconstructor
 
+        started = time.monotonic()
         self.reconstruct = Mast3rReconstructor(WEIGHTS)
+        # this runs once per GPU container: a cold start pays it before the build begins
+        print(f"MASt3R loaded onto the GPU in {time.monotonic() - started:.1f}s (cold start)", flush=True)
 
     @modal.method()
     def build(self, job_id: str, project_id: str):

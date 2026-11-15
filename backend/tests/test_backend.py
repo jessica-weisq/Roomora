@@ -72,6 +72,27 @@ def test_normalize_fixes_model_output():
     assert not m["c"]["confident"]  # model skipped it
 
 
+def test_normalize_forgives_room_name_spelling():
+    raw = {
+        "plan": {"rooms": [
+            {"name": "Principal Bedroom", "x_m": 0, "y_m": 0, "width_m": 4, "depth_m": 4},
+            {"name": "En suite (Principal Bedroom)", "x_m": 4, "y_m": 0, "width_m": 2, "depth_m": 2},
+            {"name": "Bathroom 1", "x_m": 0, "y_m": 4, "width_m": 2, "depth_m": 2},
+            {"name": "Bathroom 2", "x_m": 2, "y_m": 4, "width_m": 2, "depth_m": 2},
+            {"name": "Utility room", "x_m": 4, "y_m": 4, "width_m": 2, "depth_m": 2},
+        ]},
+        "photos": [
+            {"photo_index": 0, "room_name": "en-suite (principal bedroom)", "confident": True},
+            {"photo_index": 1, "room_name": "Utility", "confident": True},
+            {"photo_index": 2, "room_name": "Bathroom", "confident": True},  # two bathrooms: don't guess
+        ],
+    }
+    m = {x["photoId"]: x for x in normalize(raw, ["a", "b", "c"])["matches"]}
+    assert m["a"]["roomId"] == "en-suite-principal-bedroom" and m["a"]["confident"]
+    assert m["b"]["roomId"] == "utility-room"
+    assert m["c"]["roomId"] is None and not m["c"]["confident"]
+
+
 def _jpeg(color, size=(320, 240)):
     buf = io.BytesIO()
     Image.new("RGB", size, color).save(buf, "JPEG")
@@ -437,3 +458,36 @@ def test_panoramas_are_kept_with_the_build(tmp_path):
     r = client.get(one[one.index("/panorama/"):])
     assert r.status_code == 200 and r.content == png and r.headers["content-type"] == "image/png"
     assert client.get(f"/panorama/{job}/../model.png").status_code == 404
+
+
+def test_panoramas_run_alongside_reconstruction(tmp_path):
+    """The 360° views start before the slow 3D part, not after it."""
+    import threading
+
+    from core.jobs import run_build
+    from core.storage import Store
+
+    store = Store(tmp_path, {})
+    project = store.project_dir("p1")
+    (project / "photos").mkdir(parents=True)
+    (project / "photos" / "a.jpg").write_bytes(_jpeg((200, 50, 50)))
+    store.write_json(project / "plan.json", DEMO_PLAN)
+    room = DEMO_PLAN["rooms"][0]["id"]
+    store.job_dir("j1").mkdir(parents=True)
+    store.write_json(store.job_dir("j1") / "assignments.json", {"a": room})
+
+    pano_started = threading.Event()
+    seen_during_reconstruction = []
+
+    def fake_panorama(name, photo):
+        pano_started.set()
+        return "https://example.com/pano.jpg"
+
+    def fake_reconstruct(paths):
+        seen_during_reconstruction.append(pano_started.wait(timeout=5))
+        return None
+
+    run_build(store, "j1", "p1", fake_reconstruct, fake_panorama)
+    assert seen_during_reconstruction == [True]
+    status = store.get_status("j1")
+    assert status["state"] == "done" and status["panoramas"] == {room: "https://example.com/pano.jpg"}

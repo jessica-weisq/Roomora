@@ -14,8 +14,8 @@ import copy
 import json
 import logging
 import os
-import time
 import re
+import time
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -49,15 +49,15 @@ TOOL = {
                         "items": {
                             "type": "object",
                             "properties": {
-                                "name": {"type": "string", "description": "As labelled, e.g. 'Bedroom 2'. Unique."},
+                                "name": {"type": "string", "description": "As labelled, e.g. 'Bedroom 2'. An unlabelled room: its type and where it is, e.g. 'En suite (Principal Bedroom)'. Unique."},
                                 "box_2d": {
                                     "type": "array", "items": {"type": "integer"},
                                     "description": "Where the room is on the plan image, inside its walls: [ymin, xmin, ymax, xmax], each 0-1000",
                                 },
                                 "x_m": {"type": "number", "description": "Left edge, metres from the plan's left"},
                                 "y_m": {"type": "number", "description": "Top edge, metres from the plan's top"},
-                                "width_m": {"type": "number", "description": "Left to right, from the dimensions written on the plan if there are any"},
-                                "depth_m": {"type": "number", "description": "Top to bottom, from the dimensions written on the plan if there are any"},
+                                "width_m": {"type": "number", "description": "Left to right, from the dimensions written on the plan if there are any, else estimated"},
+                                "depth_m": {"type": "number", "description": "Top to bottom, from the dimensions written on the plan if there are any, else estimated"},
                             },
                             "required": ["name", "box_2d", "width_m", "depth_m"],
                         },
@@ -100,13 +100,17 @@ INSTRUCTIONS = """You are helping turn a property's floor plan and room photos i
    room, WC, cloakroom, utility room and labelled cupboard or store, plus hallways and landings.
    An en suite is a separate room even when it opens off a bedroom: give it its own box, and keep it out
    of the bedroom's box.
+   Many plans don't label bathrooms, en suites, shower rooms or WCs at all, or give their sizes: find them
+   by their fixtures (the symbols for a bath, shower tray, toilet or basin) and list them anyway. Name an
+   unlabelled room by its type and where it is, e.g. "En suite (Principal Bedroom)", "Bathroom (by
+   Bedroom 2)", "Cloakroom WC". A bathroom with a door into a bedroom is that bedroom's en suite.
    For each room give box_2d, its position on the plan image just inside its walls, as
    [ymin, xmin, ymax, xmax] on a 0-1000 scale across the image. Also give its width (left to right) and
    depth (top to bottom) in metres, read from the dimensions written on the plan; if there are none,
    estimate from typical sizes (a door is about 0.8 m wide). Approximate an L-shaped or irregular room
    with its bounding box. x_m and y_m (its position in metres) are optional.
    If the plan shows several floors, place them side by side, left to right, without overlapping.
-   Give rooms with the same type distinct names as labelled (e.g. "Bedroom 1", "Bedroom 2").
+   Give rooms with the same type distinct names (as labelled, e.g. "Bedroom 1", "Bedroom 2").
    If the plan has a north arrow or compass rose, give the direction it points as north_arrow_deg
    (degrees clockwise from straight up the page). Leave it out if there isn't one; don't guess.
 
@@ -118,7 +122,11 @@ INSTRUCTIONS = """You are helping turn a property's floor plan and room photos i
    it has a bath or only a shower or just a WC and basin, where its window is, which way the door opens
    and what's visible through it (a bed through the doorway means an en suite), and its size and shape.
    If two of them could still fit, set confident to false and list both.
-   If a photo isn't of a room in this property (outside, a garden, a street), set room_name to null.
+   Use room names exactly as you wrote them in plan.rooms.
+   Every photo taken inside a home belongs to one of this property's rooms: if you can't tell which, give
+   the likeliest room of the right type (a bathroom photo goes to a bathroom, en suite, shower room or WC),
+   set confident to false and list the others of that type. Set room_name to null only for a photo that
+   isn't of a room in this property (outside, a garden, a street).
 
 Report everything with the report_layout tool. Every photo index must appear exactly once."""
 
@@ -234,8 +242,29 @@ def normalize(raw: dict[str, Any], photo_ids: list[str]) -> dict[str, Any]:
     except (KeyError, TypeError, ValueError):
         pass
 
+    def key(name: Any) -> str:
+        return re.sub(r"[^a-z0-9]+", "", str(name).lower())
+
+    by_key: dict[str, str] = {}
+    for n, i in by_name.items():
+        by_key.setdefault(key(n), i)
+
     def rid(name: Any) -> str | None:
-        return by_name.get(str(name).strip().lower()) if name else None
+        """Plan room id for a name the model wrote; forgiving about case, spaces and punctuation
+        ("En-suite" = "En suite"), or a shortened name that fits exactly one room ("Principal en suite"
+        isn't, but "Utility" for "Utility room" is). None when it fits no room or more than one."""
+        if not name:
+            return None
+        exact = by_name.get(str(name).strip().lower())
+        if exact:
+            return exact
+        k = key(name)
+        if not k:
+            return None
+        if k in by_key:
+            return by_key[k]
+        hits = {i for kk, i in by_key.items() if k in kk or kk in k}
+        return hits.pop() if len(hits) == 1 else None
 
     seen: dict[int, dict[str, Any]] = {}
     for p in raw.get("photos") or []:
