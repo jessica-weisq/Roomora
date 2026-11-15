@@ -56,7 +56,7 @@ The backend in `backend/` implements the API below. All network calls are in `sr
 
 ```
 VITE_USE_MOCK=false
-VITE_API_URL=http://localhost:8000/api
+VITE_API_URL=http://localhost:8000
 ```
 
 For the street view in the walk-through, add a Google Maps browser key as `VITE_GOOGLE_MAPS_KEY=...` (Maps JavaScript, Maps Static, Street View Static and Geocoding APIs; restrict it to your site's address). The same key gives the 3D walk a real view out of the windows: the nearest Street View panorama to the address, lined up with the compass (set `north` in the property data if the plan isn't drawn with north up). Without it the street shows a drawn front-of-house picture and the windows look out on drawn scenery.
